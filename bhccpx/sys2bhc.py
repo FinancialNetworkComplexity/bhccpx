@@ -31,7 +31,9 @@ import multiprocessing as mp
 import progressbar as pb
 
 import bhc_datautil as UTIL
-CONFIG = UTIL.read_bhc_config()
+from bhc_datautil import Verbosity
+# CONFIG = UTIL.read_bhc_config()
+CONFIG = UTIL.read_config()
 
 import csv2sys
 
@@ -103,7 +105,8 @@ def remove_branches(config, DATA, BHC):
 # The function also decorates the BHC graph with a number of important 
 # attributes, by calling the add_attibutes().
 def extractBHC(config, asofdate, rssd, DATA=None):
-    (verbose, veryverbose) = UTIL.verbosity(config)
+    # (verbose, veryverbose) = UTIL.verbosity(config)
+    verbosity = UTIL.verbosity(config)
     BHC = None
     if (config['sys2bhc']['indir'] != config['csv2sys']['indir']):
         print('WARNING: csv2sys.indir:', config['csv2sys']['indir'], 'differs from sys2bhc_indir:', config['sys2bhc']['indir'])
@@ -111,7 +114,7 @@ def extractBHC(config, asofdate, rssd, DATA=None):
         print('WARNING: csv2sys.outdir:', config['csv2sys']['outdir'], 'differs from sys2bhc_outdir:', config['sys2bhc']['outdir'])
     BankSys = csv2sys.make_banksys(config, asofdate)
     if (None==DATA):
-        if (veryverbose): print('Fetching DATA (not provided)')
+        if (verbosity == Verbosity.VERYVERBOSE): print('Fetching DATA (not provided)')
         outdir = config['sys2bhc']['outdir']
         indir = config['sys2bhc']['indir']
         fA = config['sys2bhc']['attributesactive']
@@ -139,13 +142,16 @@ def extractBHC(config, asofdate, rssd, DATA=None):
     HHs = DATA[UTIL.IDX_HighHolder]
     if (rssd in HHs):
         BHC = populate_bhc(config, BankSys, DATA, rssd)
-        if (veryverbose): print('BHC:', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
+        if (verbosity == Verbosity.VERYVERBOSE):
+            print('BHC:', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
         bhcfilename = 'NIC_'+str(rssd)+'_'+str(asofdate)+'.pik'
         bhcfilepath = os.path.join(config['sys2bhc']['outdir'], bhcfilename)
         nx.write_gpickle(BHC, bhcfilepath)
-        if (veryverbose): print('As of', asofdate, 'BHC', rssd, 'has', BHC.number_of_nodes(), 'nodes and', BHC.number_of_edges(), 'edges:', BHC.nodes(data=True)[rssd]['nm_lgl'])
+        if (verbosity == Verbosity.VERYVERBOSE):
+            print('As of', asofdate, 'BHC', rssd, 'has', BHC.number_of_nodes(), 'nodes and', BHC.number_of_edges(), 'edges:', BHC.nodes(data=True)[rssd]['nm_lgl'])
     else:
-        if (verbose): print('WARNING: RSSD missing from high-holder list:', rssd, 'as of', asofdate)
+        if (verbosity >= Verbosity.VERBOSE):
+            print('WARNING: RSSD missing from high-holder list:', rssd, 'as of', asofdate)
     return BHC
 
 
@@ -183,28 +189,34 @@ def extract_bhcs_ondate(config, asofdate):
 # Loop over all dates in the asoflist (in config). For each date, extract
 # all the BHCs in the bhclist.
 def make_bhcs(config):
-    (verbose, veryverbose) = UTIL.verbosity(config)
-    if (veryverbose): UTIL.print_config(config, __file__)
+    # (verbose, veryverbose) = UTIL.verbosity(config)
+    verbosity = UTIL.verbosity(config)
+    if (verbosity == Verbosity.VERYVERBOSE): UTIL.print_config(config, __file__)
     asof_list = []    
     for YQ in eval(config['sys2bhc']['asoflist']):
         asof_list.append(UTIL.make_asof(YQ)[0])
     if ("TRUE"==config['sys2bhc']['clearcache'].upper()):
         clear_cache(config['sys2bhc']['outdir'], asof_list)
     if (int(config['sys2bhc']['parallel']) > 0):
-        if (verbose): print('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
+        if (verbosity >= Verbosity.VERBOSE):
+            print('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
         pcount = min(int(config['sys2bhc']['parallel']), os.cpu_count(), len(asof_list))
         pool = mp.Pool(pcount)
         for asofdate in asof_list:
             pool.apply_async(extract_bhcs_ondate, (config, asofdate))
         pool.close()
         pool.join()
-        if (veryverbose): print('Parallel processing complete')
+        if (verbosity >= Verbosity.VERBOSE):
+            print('Parallel processing complete')
     else:
-        if (verbose): print('Beginning sequential processing for each asofdate')
+        if (verbosity >= Verbosity.VERBOSE):
+            print('Beginning sequential processing for each asofdate')
         for asof in pb.progressbar(asof_list, redirect_stdout=True):
             extract_bhcs_ondate(config, asof)
-        if (veryverbose): print('Sequential processing complete')
-    if (verbose): print('**** Processing complete ****')
+        if (verbosity >= Verbosity.VERYVERBOSE):
+            print('Sequential processing complete')
+    if (verbosity >= Verbosity.VERBOSE):
+        print('**** Processing complete ****')
 
 
 # The main function controls execution when running from the command line

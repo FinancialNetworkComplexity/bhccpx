@@ -27,21 +27,26 @@ import os
 
 #import pandas as pd
 import networkx as nx
-import _pickle as pik
+import pickle as pkl
 import multiprocessing as mp
 import progressbar as pb
 
 import bhca
 import bhc_datautil as UTIL
-CONFIG = UTIL.read_bhc_config()
+from configparser import ConfigParser
+CONFIG = UTIL.read_config()
+
+import logging
+logger = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
 
 
-# Deletes any files in the cache corresponding to the range of dates
-# implied by YQ0 and YQ1
 def clear_cache(cachedir, YQ0, YQ1):
+    """
+    Deletes any files in the cache corresponding to the range of dates implied by YQ0 and YQ1
+    """
     asof_list = UTIL.assemble_asofs(YQ0, YQ1)
     for asofdate in asof_list:
-        sysfilename = 'NIC_'+'_'+str(asofdate)+'.pik'
+        sysfilename = 'NIC_'+'_'+str(asofdate)+'.pkl'
         sysfilepath = os.path.join(cachedir, sysfilename)
         if os.path.isfile(sysfilepath):
             os.remove(sysfilepath)
@@ -76,46 +81,48 @@ def find_highholder(config, BankSys, rssd):
     int
         Identifier of the high-holder entity (or first in the list, if 
         multiple high holders are found)
-
     """
-    (verbose, veryverbose) = UTIL.verbosity(config)
     HH_list = bhca.find_highholders(BankSys, rssd)
-    if (None==HH_list[0]):
-        if (verbose): print('WARNING: Entity not in the banking system:', rssd)   
-    elif (len(HH_list) > 1):
-        if (verbose): print('WARNING: Multiple high-holders', rssd, HH_list)    
-    elif (len(HH_list) < 1):
-        if (verbose): print('WARNING: No high-holders for '+str(rssd))
+    if HH_list[0] is None:
+        logger.warning('Entity not in the banking system: %s', str(rssd))
+    elif len(HH_list) > 1:
+        logger.warning('Multiple high-holders: %s %s', str(rssd), str(HH_list))
+    elif len(HH_list) < 1:
+        logger.warning('No high-holders: %s', str(rssd))
     return HH_list[0]
 
            
-# A function to read or create a NetworkX graph of the full banking system
-# on a given date. The function looks for an existing graph in a pickle file
-# located at sysfilepath (for example, .../cachedir/NIC__YYYYMMDD.pik),
-# where YYYYMMDD is the asofdate. 
-# If this file exists, it is unpackeded from the pickle and returned.
-# If the file does not (yet) exist, the NetworkX DiGraph is instead created
-# from the relationships data and dumped into a new pickle at sysfilepath.
-# The graph is a naked directed graph whose nodes are NIC entities and 
-# whose edges point from parent nodes to offspring nodes. 
-# The function then returns this digraph (either newly created or unpickled). 
-def make_banksys(config, asofdate):
-    (verbose, veryverbose) = UTIL.verbosity(config)
-    sysfilename = 'NIC_'+'_'+str(asofdate)+'.pik'
-    sysfilepath = os.path.join(config['csv2sys']['outdir'], sysfilename)
-    relfilename = config['csv2sys']['relationships']
-    csvfilepath = os.path.join(config['csv2sys']['indir'], relfilename)
+def make_banksys(config: ConfigParser, asofdate):
+    """
+    A function to read or create a NetworkX graph of the full banking system
+    on a given date. The function looks for an existing graph in a pickle file
+    located at sysfilepath (for example, .../cachedir/NIC__YYYYMMDD.pkl),
+    where YYYYMMDD is the asofdate. 
+
+    If this file exists, it is unpackeded from the pickle and returned.
+    If the file does not (yet) exist, the NetworkX DiGraph is instead created
+    from the relationships data and dumped into a new pickle at sysfilepath.
+
+    The graph is a naked directed graph whose nodes are NIC entities and 
+    whose edges point from parent nodes to offspring nodes. 
+    The function then returns this digraph (either newly created or unpickled). 
+    """
+    sysfilename = 'NIC_'+'_'+str(asofdate)+'.pkl'
+    sysfilepath = os.path.join(config.get('csv2sys', 'outdir'), sysfilename)
+    relfilename = config.get('csv2sys', 'relationships')
+    csvfilepath = os.path.join(config.get('csv2sys', 'indir'), relfilename)
+
     BankSys = None
     if os.path.isfile(sysfilepath):
-        if (veryverbose): print('FOUND: Banking system file path:   ', sysfilepath)
-        f = open(sysfilepath, 'rb')
-        BankSys = pik.load(f)
-        f.close()
+        logger.debug('FOUND: Banking system file path:   ', sysfilepath)
+        with open(sysfilepath, 'rb') as f:
+            BankSys = pkl.load(f)
     else:
-        if (veryverbose): print('CREATING: Banking system file path:', sysfilepath, 'for', asofdate)
+        logger.debug('CREATING: Banking system file path: %s for %s', sysfilepath, asofdate)
         BankSys = nx.DiGraph()
-        csvfilepath = os.path.join(config['csv2sys']['indir'], config['csv2sys']['relationships'])
-        if (veryverbose): print('CSV file path:', csvfilepath, asofdate)
+        csvfilepath = os.path.join(config.get('csv2sys', 'indir'), config.get('csv2sys', 'relationships'))
+        logger.debug('CSV file path: %s %s', csvfilepath, asofdate)
+
         RELdf = UTIL.RELcsv2df(csvfilepath, asofdate)
         (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END) = UTIL.REL_IDcols(RELdf)
         for row in RELdf.iterrows():
@@ -124,67 +131,72 @@ def make_banksys(config, asofdate):
             rssd_par = row[0][ID_RSSD_PARENT]
             rssd_off = row[0][ID_RSSD_OFFSPRING]
             if (asofdate < date0 or asofdate > date1):
-                if (verbose): print('ASOFDATE,', asofdate, 'out of bounds:', rssd_par, rssd_off, date0, date1)
+                logger.info('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
                 continue   
             BankSys.add_edge(rssd_par, rssd_off)
+        
         # Adding in the singleton institutions (no edges in Relationships file)
-        if (veryverbose): print('System (pre)  as of '+str(asofdate)+' has', BankSys.number_of_nodes(), 'nodes and', BankSys.number_of_edges(), 'edges')
-        indir = config['csv2sys']['indir']
-        fA = config['csv2sys']['attributesactive']
-        fB = config['csv2sys']['attributesbranch']
-        fC = config['csv2sys']['attributesclosed']
+        logger.debug(
+            'System (pre)  as of %s has %s nodes and %s edges',
+            str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges())
+        indir = config.get('csv2sys', 'indir')
+        fA = config.get('csv2sys', 'attributesactive')
+        fB = config.get('csv2sys', 'attributesbranch')
+        fC = config.get('csv2sys', 'attributesclosed')
         ATTdf = UTIL.makeATTs(indir, fA, fB, fC, asofdate, filter_asof=True)
-#        ATTdf = ATTdf[ATTdf.NICsource=='A']
         ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
         ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate]
-    #    ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate]
-    #    ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
         nodes_BankSys = set(BankSys.nodes)
         nodes_ATTdf = set(ATTdf['ID_RSSD'].unique())
         nodes_new = nodes_ATTdf.difference(nodes_BankSys)
         BankSys.add_nodes_from(nodes_new)
+
         # Storing the new banking system file
-        f = open(sysfilepath, 'wb')
-        pik.dump(BankSys, f)
-        f.close()
-    if (veryverbose): print('System (post) as of '+str(asofdate)+' has', BankSys.number_of_nodes(), 'nodes and', BankSys.number_of_edges(), 'edges;', len(nodes_new), 'added, out of', len(nodes_ATTdf), 'candidates in', type(ATTdf))
-#    return (BankSys, ATTdf, nodes_BankSys, nodes_ATTdf, nodes_new)
+        os.makedirs(os.path.dirname(sysfilepath), exist_ok=True)
+        with open(sysfilepath, 'wb') as f:
+            pkl.dump(BankSys, f)
+    
+    logger.debug(
+        'System (post) as of %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
+        str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
     return BankSys
     
 
 # This critical function builds a representation of the full system
-def build_sys(config):
-    (verbose, veryverbose) = UTIL.verbosity(config)
-    if (veryverbose): UTIL.print_config(config, __file__)
-    # If clearcache, then remove existing banking system pik files and recreate
-    if ('TRUE'==config['csv2sys']['clearcache'].upper()):
-        if (verbose): print('Clearing output cache of *.pik files in the range:', config['csv2sys']['asofdate0'], config['csv2sys']['asofdate1'])
-        clear_cache(config['csv2sys']['outdir'], config['csv2sys']['asofdate0'], config['csv2sys']['asofdate1'])
-    asof_list = UTIL.assemble_asofs(config['csv2sys']['asofdate0'], config['csv2sys']['asofdate1'])
-    if (veryverbose): print('List of as-of dates to process:', asof_list, 'Cores:', config['csv2sys']['parallel'], config['csv2sys']['outdir'])
-    if (int(config['csv2sys']['parallel']) > 0):
-        if (verbose): print('Beginning parallel processing ('+str(len(asof_list))+' tasks across '+config['csv2sys']['parallel']+' cores) for each as-of date (process messages may be trapped by parallel threads)')
-        pcount = min(int(config['csv2sys']['parallel']), os.cpu_count(), len(asof_list))
+def build_sys(config: ConfigParser):
+    if config.getboolean('csv2sys', 'clearcache'):
+        # Remove existing banking system pkl files and recreate
+        logger.info('Clearing output cache of *.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+        clear_cache(config.get('csv2sys', 'outdir'), config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+    
+    asof_list = UTIL.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+    logger.debug('List of as-of dates to process: %s Cores: %s %s', asof_list, config.getint('csv2sys', 'parallel'), config.get('csv2sys', 'outdir'))
+    if config.getint('csv2sys', 'parallel') > 0:
+        logger.info(
+            'Beginning parallel processing (%s tasks across %s cores) for each as-of date (process messages may be trapped by parallel threads)',
+            str(len(asof_list)), config.getint('csv2sys', 'parallel'))
+        
+        pcount = min(config.getint('csv2sys', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(processes=pcount)
         for asof in asof_list:
             pool.apply_async(make_banksys, (config, asof))
         pool.close()
         pool.join()
-        if (veryverbose): print('Parallel processing complete')
+
+        logger.info('Parallel processing complete')
     else:
-        if (verbose): print('Beginning sequential processing for each as-of date')
-        for asof in pb.progressbar(asof_list, redirect_stdout=True):
+        logger.info('Beginning sequential processing for each as-of date')
+        for asof in pb.ProgressBar()(asof_list):
              make_banksys(config, asof)
-        if (veryverbose): print('Sequential processing complete')
-    if (verbose): print('**** Processing complete ****')
+        logger.info('Sequential processing complete')
+    logger.info('**** Processing complete ****')
 
 
-# The main function controls execution when running from the command line
 def main(argv=None):
     config = UTIL.parse_command_line(argv, CONFIG, __file__)
+    # UTIL.print_config(config, __file__)
     build_sys(config)
     
-# This tests whether the module is being run from the command line
 if __name__ == "__main__":
     main()
     

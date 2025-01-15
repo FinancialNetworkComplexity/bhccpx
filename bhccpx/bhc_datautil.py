@@ -115,7 +115,7 @@ class Usage(Exception):
 # Reads the application configuration from the bhc_complex.ini file
 def read_config(config_file='bhc_complex.ini'):
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
-    config.read(config_file)
+    config.read(config_file, encoding='utf-8')
     # It is safe to configure logging repeatedly; extra calls get ignored
     log_dir = config['handler_file']['args']
     print('LLL', log_dir)
@@ -143,12 +143,34 @@ def print_config(config, modulefile):
     print('--------------------------------------------------------------')
 
 
-# Simple formatted dump of the config parameters relevant for a given 
-# configuration section. Useful for debugging.
-def verbosity(config):
-    verbose = ('TRUE'==config['DEFAULT']['verbose'].upper())
-    veryverbose = ('TRUE'==config['DEFAULT']['veryverbose'].upper())
-    return (verbose, veryverbose)
+# from enum import IntEnum
+# class Verbosity(IntEnum):
+#     QUIET = -1
+#     DEFAULT = 0
+#     VERBOSE = 1
+#     VERYVERBOSE = 2
+
+# # Simple formatted dump of the config parameters relevant for a given 
+# # configuration section. Useful for debugging.
+# def verbosity(config) -> Verbosity:
+#     # verbose = ('TRUE'==config['DEFAULT']['verbose'].upper())
+#     # veryverbose = ('TRUE'==config['DEFAULT']['veryverbose'].upper())
+#     # return (verbose, veryverbose)
+#     level = int(config['DEFAULT']['verbosity'])
+#     if level <= -1:
+#         return Verbosity.QUIET
+#     elif level == 0:
+#         return Verbosity.DEFAULT
+#     elif level == 1:
+#         return Verbosity.VERBOSE
+#     elif level >= 2:
+#         return Verbosity.VERYVERBOSE
+
+# def log_at_level(level, message, config):
+#     import logging
+#     logg
+#     if level >= verbosity(config):
+#         print(message)
 
 
 # This function takes an (open) CSV file and an asofdate as inputs:
@@ -241,7 +263,8 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False):
         'STREET_LINE2':object, 
         'URL':object, 
         'ZIP_CD':object}
-    ATTdf = pd.read_csv(csvfile, dtype=DTYPES_ATT, sep='\t')
+    ATTdf = pd.read_csv(csvfile, dtype=DTYPES_ATT)
+    ATTdf.rename(columns={'#ID_RSSD': 'ID_RSSD'}, inplace=True)
     ATTdf['rssd'] = ATTdf['ID_RSSD']
     if (filter_asof):
         ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
@@ -289,7 +312,8 @@ def RELcsv2df(csvfile, asofdate, filter_asof=True):
         'REGK_INV':np.int8, 
         'REG_IND':np.int8, 
         'RELN_LVL':np.int8}
-    RELdf = pd.read_csv(csvfile, dtype=DTYPES_REL, sep='\t')
+    RELdf = pd.read_csv(csvfile, dtype=DTYPES_REL)
+    RELdf.rename(columns={'#ID_RSSD_PARENT': 'ID_RSSD_PARENT'}, inplace=True)
     if (filter_asof):
         RELdf = RELdf[RELdf.DT_START <= asofdate]
         RELdf = RELdf[RELdf.DT_END >= asofdate]
