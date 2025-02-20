@@ -32,6 +32,7 @@ import logging.config as logcfg
 import numpy as np 
 import pandas as pd
 import configparser as cp
+import json
 import _pickle as pik 
 
 LOG = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
@@ -118,10 +119,10 @@ def read_config(config_file='bhc_complex.ini'):
     config.read(config_file, encoding='utf-8')
     # It is safe to configure logging repeatedly; extra calls get ignored
     log_dir = config['handler_file']['args']
-    print('LLL', log_dir)
+    # print('LLL', log_dir)
     log_dir = log_dir.split(sep="'")[1]
     log_dir = os.path.split(log_dir)[0]
-    print('LL2', log_dir)
+    # print('LL2', log_dir)
     os.makedirs(log_dir, exist_ok=True)
     logcfg.fileConfig(config_file)
     return config
@@ -143,34 +144,6 @@ def print_config(config, modulefile):
     print('--------------------------------------------------------------')
 
 
-# from enum import IntEnum
-# class Verbosity(IntEnum):
-#     QUIET = -1
-#     DEFAULT = 0
-#     VERBOSE = 1
-#     VERYVERBOSE = 2
-
-# # Simple formatted dump of the config parameters relevant for a given 
-# # configuration section. Useful for debugging.
-# def verbosity(config) -> Verbosity:
-#     # verbose = ('TRUE'==config['DEFAULT']['verbose'].upper())
-#     # veryverbose = ('TRUE'==config['DEFAULT']['veryverbose'].upper())
-#     # return (verbose, veryverbose)
-#     level = int(config['DEFAULT']['verbosity'])
-#     if level <= -1:
-#         return Verbosity.QUIET
-#     elif level == 0:
-#         return Verbosity.DEFAULT
-#     elif level == 1:
-#         return Verbosity.VERBOSE
-#     elif level >= 2:
-#         return Verbosity.VERYVERBOSE
-
-# def log_at_level(level, message, config):
-#     import logging
-#     logg
-#     if level >= verbosity(config):
-#         print(message)
 
 
 # This function takes an (open) CSV file and an asofdate as inputs:

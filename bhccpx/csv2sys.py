@@ -114,7 +114,7 @@ def make_banksys(config: ConfigParser, asofdate):
 
     BankSys = None
     if os.path.isfile(sysfilepath):
-        logger.debug('FOUND: Banking system file path:   ', sysfilepath)
+        logger.debug('FOUND: Banking system file path: %s', sysfilepath)
         with open(sysfilepath, 'rb') as f:
             BankSys = pkl.load(f)
     else:
@@ -155,15 +155,14 @@ def make_banksys(config: ConfigParser, asofdate):
         os.makedirs(os.path.dirname(sysfilepath), exist_ok=True)
         with open(sysfilepath, 'wb') as f:
             pkl.dump(BankSys, f)
-    
-    logger.debug(
-        'System (post) as of %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
-        str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
+        logger.debug(
+            'System (post) as of %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
+            str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
     return BankSys
     
 
-# This critical function builds a representation of the full system
 def build_sys(config: ConfigParser):
+    """Builds a representation of the full system"""
     if config.getboolean('csv2sys', 'clearcache'):
         # Remove existing banking system pkl files and recreate
         logger.info('Clearing output cache of *.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
@@ -189,7 +188,6 @@ def build_sys(config: ConfigParser):
         for asof in pb.ProgressBar()(asof_list):
              make_banksys(config, asof)
         logger.info('Sequential processing complete')
-    logger.info('**** Processing complete ****')
 
 
 def main(argv=None):
