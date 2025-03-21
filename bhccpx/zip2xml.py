@@ -27,55 +27,50 @@ import os
 import logging
 import zipfile
 import progressbar as pb
+from configparser import ConfigParser
 
 # The config object defines key user-controlled variables
 # If running from the command line, these choices may be overridden below
 import bhc_datautil as UTIL
-
 CONFIG = UTIL.read_config()
-LOG = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
+
+logger = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
 
 
 # Unzip a specific file
-def unzip_nic_file(config, zipfilename):
-    zipfilepath = os.path.join(config['zip2xml']['indir'], zipfilename)
-    LOG.debug('ZIP file found:    '+zipfilepath+
-              ' ('+str(os.path.getsize(zipfilepath)) +' bytes)',
-              extra={'src':'unzip_nic_file.zip_file'})
+def unzip_nic_file(config: ConfigParser, zipfilename: str):
+    zipfilepath = os.path.join(config.get('zip2xml', 'indir'), zipfilename)
+    logger.debug('ZIP file found: %s (%s bytes)', zipfilepath, str(os.path.getsize(zipfilepath)))
     zipf = zipfile.ZipFile(zipfilepath, 'r')
     xmlfilename = zipf.namelist()[0]
-    zipf.extract(xmlfilename, config['zip2xml']['outdir'])
+    zipf.extract(xmlfilename, config.get('zip2xml', 'outdir'))
     zipf.close()
-    LOG.debug('XML file extracted: '+xmlfilename+' in directory: '+
-              CONFIG['zip2xml']['outdir'],
-              extra={'src':'unzip_nic_file.xml_file'})
+    logger.debug('XML file extracted: %s in directory: %s', xmlfilename, config.get('zip2xml', 'outdir'))
 
 
 # This critical function unzips all five *.zip files, as
 # indentified in the configuration object
-def unzip_nic(config):
+def unzip_nic(config: ConfigParser):
     UTIL.print_config(config, __file__)
     zipfiles = [
-        config['zip2xml']['attributesactive'],
-        config['zip2xml']['attributesbranch'],
-        config['zip2xml']['attributesclosed'],
-        config['zip2xml']['relationships'],
-        config['zip2xml']['transformations'] ]
-    if (LOG.getEffectiveLevel()<logging.WARNING):
+        config.get('zip2xml', 'attributesactive'),
+        config.get('zip2xml', 'attributesbranch'),
+        config.get('zip2xml', 'attributesclosed'),
+        config.get('zip2xml', 'relationships'),
+        config.get('zip2xml', 'transformations'),
+    ]
+    if (logger.getEffectiveLevel()<logging.WARNING):
         for z in pb.progressbar(zipfiles, redirect_stdout=True):
             unzip_nic_file(config, z)
     else:
         for z in zipfiles:
             unzip_nic_file(config, z)
-    LOG.warning('**** Processing complete ****', 
-                extra={'src':'unzip_nic.proc_complete'})
+    logger.warning('**** Processing complete ****')
             
     
-# The main function controls execution when running from the command line
 def main(argv=None):
     config = UTIL.parse_command_line(argv, CONFIG, __file__)
     unzip_nic(config)
     
-# This tests whether the module is being run from the command line
 if __name__ == "__main__":
     main()

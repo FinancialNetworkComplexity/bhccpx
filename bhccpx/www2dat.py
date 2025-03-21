@@ -27,6 +27,7 @@ import os
 import logging
 import time
 import wget
+from configparser import ConfigParser
 
 import progressbar as pb
 
@@ -35,23 +36,22 @@ import progressbar as pb
 import bhc_datautil as UTIL
 
 CONFIG = UTIL.read_config()
-LOG = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
+logger = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
 
 
-# Unzip a specific file
-def download_data(config, zipfilename):
+# This is not used anywhere, and is essentially just zip2xml::unzip_nic_file but with the wget call
+# TODO: remove or refactor
+def download_data(config: ConfigParser, zipfilename):
     wget.download(url, out=output_directory)
     zipfilepath = os.path.join(config['zip2xml']['indir'], zipfilename)
-    LOG.debug('ZIP file found:    '+zipfilepath+
+    logger.debug('ZIP file found:    '+zipfilepath+
               ' ('+str(os.path.getsize(zipfilepath)) +' bytes)',
               extra={'src':'unzip_nic_file.zip_file'})
     zipf = zipfile.ZipFile(zipfilepath, 'r')
     xmlfilename = zipf.namelist()[0]
     zipf.extract(xmlfilename, config['zip2xml']['outdir'])
     zipf.close()
-    LOG.debug('XML file extracted: '+xmlfilename+' in directory: '+
-              CONFIG['zip2xml']['outdir'],
-              extra={'src':'unzip_nic_file.xml_file'})
+    logger.debug('XML file extracted: %s in directory: %s', xmlfilename, config.get('zip2xml','outdir'))
 
 
 
@@ -60,25 +60,25 @@ def make_dirs(config):
     today = int(time.strftime("%Y%m%d"))
     qtrend = UTIL.rcnt_qtrend(today)
     nic_subdir = UTIL.stringify_qtrend(qtrend)
-    nic_dir = os.path.join(config['www2dat']['nic_dir'], nic_subdir)
+    nic_dir = os.path.join(config.get('www2dat', 'nic_dir'), nic_subdir)
     os.makedirs(nic_dir, exist_ok=True)
-    LOG.info('NIC dir: '+nic_dir, extra={'src':'www2dat.make_dirs'})
+    logger.info('NIC dir: %s', nic_dir)
+
     # FDIC CB dir
-    fdic_cb_dir = config['www2dat']['fdic_cb_dir']
+    fdic_cb_dir = config.get('www2dat','fdic_cb_dir')
     os.makedirs(fdic_cb_dir, exist_ok=True)
-    LOG.info('FDIC CB dir: '+fdic_cb_dir, extra={'src':'www2dat.make_dirs'})
+    logger.info('FDIC CB dir: %s', fdic_cb_dir)
+
     # FDIC Fail dir
-    fdic_fail_dir = config['www2dat']['fdic_fail_dir']
+    fdic_fail_dir = config.get('www2dat','fdic_fail_dir')
     os.makedirs(fdic_fail_dir, exist_ok=True)
-    LOG.info('FDIC Fail dir: '+fdic_fail_dir,extra={'src':'www2dat.make_dirs'})
+    logger.info('FDIC Fail dir: %s', fdic_fail_dir)
             
     
-# The main function controls execution when running from the command line
 def main(argv=None):
     config = UTIL.parse_command_line(argv, CONFIG, __file__)
     UTIL.print_config(config, __file__)
     make_dirs(config)
     
-# This tests whether the module is being run from the command line
 if __name__ == "__main__":
     main()
