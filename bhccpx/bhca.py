@@ -189,9 +189,9 @@ def get_quotient(BHC, dimen, Qtype):
         parent = e[0]
         child = e[1]
         e_attrs = e[2]
-        if ((dimen in BHCu.node[parent]) and (dimen in BHCu.node[child])):
-            parent_label = BHCu.node[parent][dimen]
-            child_label = BHCu.node[child][dimen]
+        if ((dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child])):
+            parent_label = BHCu.nodes[parent][dimen]
+            child_label = BHCu.nodes[child][dimen]
             BHCq.add_edge(parent_label, child_label, attr_dict=e_attrs)
     # Remove self-loops, as appropriate
     if (2==Qtype or 4==Qtype):
@@ -265,8 +265,8 @@ def node_equals(u, v, G, dimen):
     
     """
     testval = False
-    if (dimen in G.node[u] and dimen in G.node[v]):
-        testval = (G.node[u][dimen] == G.node[v][dimen])
+    if (dimen in G.nodes[u] and dimen in G.nodes[v]):
+        testval = (G.nodes[u][dimen] == G.nodes[v][dimen])
     return testval
     
 
@@ -313,7 +313,7 @@ def get_contraction(BHC, dimen):
     BHCcont = BHC.copy()
     while (number_of_edges_contracted != 0):
         BHCcont, number_of_edges_contracted, n_unc = contract(BHCcont, dimen)
-    BHCcont.remove_edges_from(BHCcont.selfloop_edges())
+    BHCcont.remove_edges_from(nx.selfloop_edges(BHCcont))
     return BHCcont
 
 def get_disjoint_maximal_homogeneous_subgraphs(BHC, dimen):
@@ -322,7 +322,7 @@ def get_disjoint_maximal_homogeneous_subgraphs(BHC, dimen):
     for e in BHCu.edges(data=True):
         parent = e[0]
         child = e[1]
-        if ((dimen in BHCu.node[parent]) and (dimen in BHCu.node[child])):
+        if ((dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child])):
             if not(node_equals(parent, child, BHCu, dimen)):
                 BHCdisj.remove_edge(parent, child)
     return BHCdisj

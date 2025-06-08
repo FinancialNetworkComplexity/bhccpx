@@ -26,7 +26,6 @@
 import getopt
 import sys
 import os
-import logging
 import logging.config as logcfg
 
 import numpy as np 
@@ -34,8 +33,6 @@ import pandas as pd
 import configparser as cp
 import json
 import _pickle as pik 
-
-LOG = logging.getLogger(__file__.split(os.path.sep)[-1].split('.')[0])
 
 # Mnemonic indices for the DATA list, as documented below in makeDATA()
 IDX_Attributes = 0
@@ -118,11 +115,9 @@ def read_config(config_file='bhc_complex.ini'):
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
     # It is safe to configure logging repeatedly; extra calls get ignored
-    log_dir = config['handler_file']['args']
-    # print('LLL', log_dir)
+    log_dir = config.get('handler_file', 'args')
     log_dir = log_dir.split(sep="'")[1]
     log_dir = os.path.split(log_dir)[0]
-    # print('LL2', log_dir)
     os.makedirs(log_dir, exist_ok=True)
     logcfg.fileConfig(config_file)
     return config
