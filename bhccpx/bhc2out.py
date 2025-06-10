@@ -38,6 +38,7 @@ import sys2bhc
 import bhca
 
 import bhc_datautil
+from bhc_datautil import NICData
 import logging
 from logging import Logger
 
@@ -343,17 +344,19 @@ def all_bhc_complex(config: ConfigParser, asofdate, logger=logging):
         fB=config.get('bhc2out', 'attributesbranch'),
         fC=config.get('bhc2out', 'attributesclosed'),
         fREL=config.get('bhc2out', 'relationships'),
-        asofdate=asofdate
+        asofdate=asofdate,
+        logger=logger
     )
     BankSys = csv2sys.make_banksys(config, asofdate, logger=logger)
-    HHs: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
-    if HHs is None:
-        HHs: list[int] = sorted(list(DATA[bhc_datautil.IDX_HighHolder]))      # Include all RSSDs when HHs empty
-    logger.debug('Identified %s high-holders for %s', str(len(HHs)), str(asofdate))
+    highholders: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
+    if highholders is None:
+        # Include all RSSDs when HHs empty
+        highholders: list[int] = sorted(list(DATA.highholders))
+    logger.debug('Identified %s high-holders for %s', str(len(highholders)), str(asofdate))
 
     BHCs = dict()
     BHCs['ASOF'] = asofdate
-    for rssd in HHs:
+    for rssd in highholders:
         BHC = sys2bhc.populate_bhc(config, BankSys, DATA, rssd)
         metrics = complexity_workup(BHC)
         if config.getboolean('bhc2out', 'test_metrics'):

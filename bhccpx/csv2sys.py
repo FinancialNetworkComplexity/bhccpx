@@ -114,7 +114,7 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
     if os.path.isfile(sysfilepath):
         logger.debug('FOUND: Banking system file path: %s', sysfilepath)
         with open(sysfilepath, 'rb') as f:
-            BankSys = pkl.load(f)
+            BankSys: nx.DiGraph = pkl.load(f)
     else:
         logger.debug('CREATING: Banking system file path: %s for %s', sysfilepath, asofdate)
         BankSys = nx.DiGraph()

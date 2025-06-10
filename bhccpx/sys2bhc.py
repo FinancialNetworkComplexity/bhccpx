@@ -34,11 +34,12 @@ import ast
 import sys
 
 import bhc_datautil
+from bhc_datautil import NICData
 import csv2sys
 import logging
 
 
-def add_attributes(config: ConfigParser, DATA, BHC):
+def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
     """
     A function to decorate a BHC graph with certain important attibutes.
     - DATA is a list of key information resources, as assembled by makeDATA()
@@ -48,7 +49,7 @@ def add_attributes(config: ConfigParser, DATA, BHC):
     from the attributes dataframe (in the DATA object), and attached to the node. 
     The decorated BHC graph is returned.
     """
-    ATTdf = DATA[bhc_datautil.IDX_Attributes]
+    ATTdf = DATA.attributes
     for node in BHC.nodes():
         node_id = np.int32(node)
         try:
@@ -72,13 +73,13 @@ def add_attributes(config: ConfigParser, DATA, BHC):
     return BHC
 
 
-def remove_branches(config: ConfigParser, DATA, BHC):
+def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
     """
     Copies BHC to a new DiGraph object that is identical to BHC, except
     that it lacks any branches or subsidiaries of branches
     """
     removal_set = set()
-    ATTdf = DATA[bhc_datautil.IDX_Attributes]
+    ATTdf = DATA.attributes
     # Create a copy of the BHC that is editable
     BHC2 = nx.DiGraph()
     BHC2.add_nodes_from(BHC)
@@ -93,7 +94,7 @@ def remove_branches(config: ConfigParser, DATA, BHC):
             nicsource = ent['NICsource']
         except:
             pass
-        if ('B'==nicsource):
+        if nicsource == 'B':
             branchdescendants = nx.algorithms.dag.descendants(BHC,node)
             removal_set.add(node)
             for b in branchdescendants:
@@ -103,7 +104,11 @@ def remove_branches(config: ConfigParser, DATA, BHC):
     return BHC2
 
 
-def extractBHC(config: ConfigParser, asofdate, rssd, DATA=None, BankSys=None, logger=logging):
+def extractBHC(
+    config: ConfigParser, asofdate, rssd,
+    DATA: NICData | None = None, BankSys: nx.DiGraph | None = None,
+    logger=logging
+) -> nx.DiGraph | None:
     """
     A function to extract a single BHC graph from a full banking system 
     graph, starting with the BHC's high-holder RSSD ID    
@@ -116,9 +121,15 @@ def extractBHC(config: ConfigParser, asofdate, rssd, DATA=None, BankSys=None, lo
     """
     BHC = None
     if config.get('sys2bhc', 'indir') != config.get('csv2sys', 'indir'):
-        logger.warning('csv2sys.indir: %s differs from sys2bhc_indir: %s', config.get('csv2sys', 'indir'), config.get('sys2bhc', 'indir'))
+        logger.warning(
+            'csv2sys.indir: %s differs from sys2bhc_indir: %s',
+            config.get('csv2sys', 'indir'), config.get('sys2bhc', 'indir')
+        )
     if config.get('sys2bhc', 'outdir') != config.get('csv2sys', 'outdir'):
-        logger.warning('csv2sys.outdir: %s differs from sys2bhc_outdir: %s', config.get('csv2sys', 'outdir'), config.get('sys2bhc', 'outdir'))
+        logger.warning(
+            'csv2sys.outdir: %s differs from sys2bhc_outdir: %s',
+            config.get('csv2sys', 'outdir'), config.get('sys2bhc', 'outdir')
+        )
 
     if BankSys is None:
         BankSys = csv2sys.make_banksys(config, asofdate, logger)
@@ -131,11 +142,12 @@ def extractBHC(config: ConfigParser, asofdate, rssd, DATA=None, BankSys=None, lo
             fA=config.get('sys2bhc', 'attributesactive'),
             fB=config.get('sys2bhc', 'attributesbranch'),
             fC=config.get('sys2bhc', 'attributesclosed'),
-            fREL=config.get('sys2bhc', 'relationships')
+            fREL=config.get('sys2bhc', 'relationships'),
+            logger=logger
         )
 
-    HHs = DATA[bhc_datautil.IDX_HighHolder]
-    if rssd in HHs:
+    highholders = DATA.highholders
+    if rssd in highholders:
         BHC = populate_bhc(config, BankSys, DATA, rssd)
         logger.debug('BHC: %s %s %s %s', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
@@ -154,7 +166,7 @@ def extractBHC(config: ConfigParser, asofdate, rssd, DATA=None, BankSys=None, lo
     return BHC
 
 
-def populate_bhc(config: ConfigParser, BankSys, DATA, rssd) -> nx.DiGraph:
+def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd) -> nx.DiGraph:
     usebranches = config.getboolean('sys2bhc', 'usebranches')
     bhc_entities = nx.algorithms.dag.descendants(BankSys, rssd)
     bhc_entities.add(rssd)    # Include HH in the BHC too
@@ -175,7 +187,7 @@ def clear_cache(cachedir: str, asof_list):
             os.remove(sysfilepath)
 
 
-def extract_bhcs_ondate(config: ConfigParser, asofdate, logger=logging):
+def extract_bhcs_ondate(config: ConfigParser, asofdate, logger=logging) -> list[nx.DiGraph | None]:
     """
     Loop over all RSSD IDs in the bhclist (in config), loading or creating 
     a cached pik file for each on the asofdate. 
@@ -188,11 +200,12 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate, logger=logging):
         fA=config.get('sys2bhc', 'attributesactive'),
         fB=config.get('sys2bhc', 'attributesbranch'),
         fC=config.get('sys2bhc', 'attributesclosed'),
-        fREL=config.get('sys2bhc', 'relationships')
+        fREL=config.get('sys2bhc', 'relationships'),
+        logger=logger
     )
     rssd_lst: list[int] | None = ast.literal_eval(config.get('sys2bhc', 'bhclist'))
     if rssd_lst is None:
-        rssd_lst: list[int] = sorted(list(DATA[bhc_datautil.IDX_HighHolder]))
+        rssd_lst: list[int] = sorted(list(DATA.highholders))
     BankSys = csv2sys.make_banksys(config, asofdate, logger)
 
     BHCs = []
@@ -225,7 +238,7 @@ def make_bhcs(config: ConfigParser, logger=logging):
     else:
         logger.info('Beginning sequential processing for each asofdate')
         for asof in tqdm(asof_list, file=sys.stdout):
-            extract_bhcs_ondate(config, asof, logger)
+            extract_bhcs_ondate(config, asof, logger=logger)
         logger.info('Sequential processing complete')
 
 
@@ -233,7 +246,7 @@ def main(argv=None):
     config = bhc_datautil.read_config()
     config = bhc_datautil.parse_command_line(argv, config, __file__)
     logger = logging.getLogger("sys2bhc")
-    make_bhcs(config, logger)
+    make_bhcs(config, logger=logger)
     
 if __name__ == "__main__":
     main()

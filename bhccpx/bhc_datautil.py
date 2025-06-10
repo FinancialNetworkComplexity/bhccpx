@@ -27,20 +27,24 @@ import getopt
 import sys
 import os
 import logging.config as logcfg
+import logging
 
 import numpy as np 
 import pandas as pd
 import configparser as cp
 import json
-import _pickle as pik 
+import pickle as pkl
+from dataclasses import dataclass
 
-# Mnemonic indices for the DATA list, as documented below in makeDATA()
-IDX_Attributes = 0
-IDX_Relationships = 1
-IDX_HighHolder = 2
-IDX_Entities = 3
-IDX_Parents = 4
-IDX_Offspring = 5
+
+@dataclass
+class NICData:
+    attributes: pd.DataFrame
+    relationships: pd.DataFrame
+    highholders: set[int]
+    entities: set[int]
+    parents: dict[int, set[int]]
+    offspring: dict[int, set[int]]
 
 
 def parse_command_line(argv, config, modulefile):
@@ -58,12 +62,12 @@ def parse_command_line(argv, config, modulefile):
         * -h | --help   Print usage help and quit
         * -p <paramkey>:<paramval>  Override/set individual config parameters
     """
-    usagestring = ('python '+modulefile+
-                  ' [-c]'+
-                  ' [-C <configfile>]'+
-                  ' [-l <loglevel_file>]'+
-                  ' [-L <loglevel_console>]'+
-                  ' [-h | --help]'+
+    usagestring = ('python ' + modulefile +
+                  ' [-c]' +
+                  ' [-C <configfile>]' +
+                  ' [-l <loglevel_file>]' +
+                  ' [-L <loglevel_console>]' +
+                  ' [-h | --help]' +
                   ' [-p <paramkey>:<paramval>]')
     section = os.path.splitext(os.path.basename(modulefile))[0]
     showconfig = False
@@ -96,7 +100,7 @@ def parse_command_line(argv, config, modulefile):
                 print(usagestring)
                 sys.exit()
             else:
-                assert False, "unhandled option: "+o
+                assert False, "unhandled option: " + o
     except Usage as err:
         print(err.msg, file=sys.stderr)
         print("for help use --help", file=sys.stderr)
@@ -156,85 +160,86 @@ def print_config(config, modulefile):
 # The returned dataframe is indexed on one field: ID_RSSD.
 # In addition, this function adds a 'NICsource' column (not in the source CSV) 
 # to the dataframe, which indicates the nature (A/B/C) of the NIC source.
-def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False):
+def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
     DTYPES_ATT = {
-        'ACT_PRIM_CD':object, 
-        'AUTH_REG_DIST_FRS':np.int8, 
-        'BHC_IND':np.int8, 
-        'BNK_TYPE_ANALYS_CD':np.int8, 
-        'BROAD_REG_CD':np.int8, 
-        'CHTR_AUTH_CD':np.int8, 
+        'ACT_PRIM_CD': object, 
+        'AUTH_REG_DIST_FRS': np.int8, 
+        'BHC_IND': np.int8, 
+        'BNK_TYPE_ANALYS_CD': np.int8, 
+        'BROAD_REG_CD': np.int8, 
+        'CHTR_AUTH_CD': np.int8, 
         'CHTR_TYPE_CD':np.int16, 
-        'CITY':object, 
-        'CNSRVTR_CD':np.int8, 
-        'CNTRY_CD':np.int32, 
-        'CNTRY_INC_CD':np.int32, 
-        'CNTRY_INC_NM':object, 
-        'CNTRY_NM':object, 
-        'COUNTY_CD':np.int32, 
-        'DIST_FRS':np.int8, 
-        'DOMESTIC_IND':object, 
-        'DT_END':np.int32, 
-        'DT_EXIST_CMNC':np.int32, 
-        'DT_EXIST_TERM':np.int32, 
-        'DT_INSUR':np.int32, 
-        'DT_OPEN':np.int32, 
-        'DT_START':np.int32, 
-        'D_DT_END':object, 
-        'D_DT_EXIST_CMNC':object, 
-        'D_DT_EXIST_TERM':object, 
-        'D_DT_INSUR':object, 
-        'D_DT_OPEN':object, 
-        'D_DT_START':object, 
-        'ENTITY_TYPE':object, 
-        'EST_TYPE_CD':np.int8, 
-        'FBO_4C9_IND':np.int8, 
-        'FHC_IND':np.int8, 
+        'CITY': object, 
+        'CNSRVTR_CD': np.int8, 
+        'CNTRY_CD': np.int32, 
+        'CNTRY_INC_CD': np.int32, 
+        'CNTRY_INC_NM': object, 
+        'CNTRY_NM': object, 
+        'COUNTY_CD': np.int32, 
+        'DIST_FRS': np.int8, 
+        'DOMESTIC_IND': object, 
+        'DT_END': np.int32, 
+        'DT_EXIST_CMNC': np.int32, 
+        'DT_EXIST_TERM': np.int32, 
+        'DT_INSUR': np.int32, 
+        'DT_OPEN': np.int32, 
+        'DT_START': np.int32, 
+        'D_DT_END': object, 
+        'D_DT_EXIST_CMNC': object, 
+        'D_DT_EXIST_TERM': object, 
+        'D_DT_INSUR': object, 
+        'D_DT_OPEN': object, 
+        'D_DT_START': object, 
+        'ENTITY_TYPE': object, 
+        'EST_TYPE_CD': np.int8, 
+        'FBO_4C9_IND': np.int8, 
+        'FHC_IND': np.int8, 
         'FISC_YREND_MMDD':np.int16, 
-        'FNCL_SUB_HOLDER':np.int8, 
-        'FNCL_SUB_IND':np.int8, 
-        'FUNC_REG':np.int8, 
-        'IBA_GRNDFTHR_IND':np.int8, 
-        'IBF_IND':np.int8, 
-        'ID_ABA_PRIM':np.int32, 
-        'ID_CUSIP':object, 
-        'ID_FDIC_CERT':np.int32, 
-        'ID_LEI':object, 
-        'ID_NCUA':np.int32, 
-        'ID_OCC':np.int32, 
-        'ID_RSSD':np.int32, 
-        'ID_RSSD_HD_OFF':np.int32, 
-        'ID_TAX':np.int32, 
-        'ID_THRIFT':np.int32, 
-        'ID_THRIFT_HC':object, 
-        'INSUR_PRI_CD':np.int8, 
-        'MBR_FHLBS_IND':bool,        # Boolean
-        'MBR_FRS_IND':bool,          # Boolean
-        'MJR_OWN_MNRTY':np.int8, 
-        'NM_LGL':object, 
-        'NM_SHORT':object, 
-        'NM_SRCH_CD':np.int32, 
-        'ORG_TYPE_CD':np.int8, 
-        'PLACE_CD':np.int32, 
-        'PRIM_FED_REG':object, 
-        'PROV_REGION':object, 
-        'REASON_TERM_CD':np.int8, 
-        'SEC_RPTG_STATUS':np.int8, 
-        'SLHC_IND':bool,             # Boolean
-        'SLHC_TYPE_IND':np.int8,
-        'STATE_ABBR_NM':object, 
-        'STATE_CD':np.int8, 
-        'STATE_HOME_CD':np.int8, 
-        'STATE_INC_ABBR_NM':object, 
-        'STATE_INC_CD':np.int8, 
-        'STREET_LINE1':object, 
-        'STREET_LINE2':object, 
-        'URL':object, 
-        'ZIP_CD':object}
+        'FNCL_SUB_HOLDER': np.int8, 
+        'FNCL_SUB_IND': np.int8, 
+        'FUNC_REG': np.int8, 
+        'IBA_GRNDFTHR_IND': np.int8, 
+        'IBF_IND': np.int8, 
+        'ID_ABA_PRIM': np.int32, 
+        'ID_CUSIP': object, 
+        'ID_FDIC_CERT': np.int32, 
+        'ID_LEI': object, 
+        'ID_NCUA': np.int32, 
+        'ID_OCC': np.int32, 
+        'ID_RSSD': np.int32, 
+        'ID_RSSD_HD_OFF': np.int32, 
+        'ID_TAX': np.int32, 
+        'ID_THRIFT': np.int32, 
+        'ID_THRIFT_HC': object, 
+        'INSUR_PRI_CD': np.int8, 
+        'MBR_FHLBS_IND': bool,
+        'MBR_FRS_IND': bool,
+        'MJR_OWN_MNRTY': np.int8, 
+        'NM_LGL': object, 
+        'NM_SHORT': object, 
+        'NM_SRCH_CD': np.int32, 
+        'ORG_TYPE_CD': np.int8, 
+        'PLACE_CD': np.int32, 
+        'PRIM_FED_REG': object, 
+        'PROV_REGION': object, 
+        'REASON_TERM_CD': np.int8, 
+        'SEC_RPTG_STATUS': np.int8, 
+        'SLHC_IND': bool,
+        'SLHC_TYPE_IND': np.int8,
+        'STATE_ABBR_NM': object, 
+        'STATE_CD': np.int8, 
+        'STATE_HOME_CD': np.int8, 
+        'STATE_INC_ABBR_NM': object, 
+        'STATE_INC_CD': np.int8, 
+        'STREET_LINE1': object, 
+        'STREET_LINE2': object, 
+        'URL': object, 
+        'ZIP_CD': object
+    }
     ATTdf = pd.read_csv(csvfile, dtype=DTYPES_ATT)
     ATTdf.rename(columns={'#ID_RSSD': 'ID_RSSD'}, inplace=True)
     ATTdf['rssd'] = ATTdf['ID_RSSD']
-    if (filter_asof):
+    if filter_asof:
         ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
         ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate]
     ATTdf.insert(len(ATTdf.columns), 'NICsource', nicsource, allow_duplicates=True)
@@ -256,30 +261,31 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False):
 #     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, and DT_END
 # There is a separate function, REL_IDcols(), for identifying the column 
 # numbers associated with each of these four index columns.        
-def RELcsv2df(csvfile, asofdate, filter_asof=True):
+def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
     DTYPES_REL = {
-        'CTRL_IND':np.int8, 
-        'DT_RELN_EST':object, 
-        'DT_START':np.int32, 
-        'DT_END':np.int32, 
-        'D_DT_RELN_EST':object, 
-        'D_DT_START':object, 
-        'D_DT_END':object, 
-        'EQUITY_IND':np.int8, 
-        'FC_IND':np.int8, 
-        'ID_RSSD_OFFSPRING':np.int32, 
-        'ID_RSSD_PARENT':np.int32, 
-        'MB_COST':np.float64, 
-        'OTHER_BASIS_IND':np.int8, 
-        'PCT_EQUITY':np.float64, 
-        'PCT_EQUITY_BRACKET':object, 
-        'PCT_EQUITY_FORMAT':object, 
-        'PCT_OTHER':np.float64, 
-        'REASON_ROW_CRTD':np.int8, 
-        'REASON_TERM_RELN':np.int8, 
-        'REGK_INV':np.int8, 
-        'REG_IND':np.int8, 
-        'RELN_LVL':np.int8}
+        'CTRL_IND': np.int8, 
+        'DT_RELN_EST': object, 
+        'DT_START': np.int32, 
+        'DT_END': np.int32, 
+        'D_DT_RELN_EST': object, 
+        'D_DT_START': object, 
+        'D_DT_END': object, 
+        'EQUITY_IND': np.int8, 
+        'FC_IND': np.int8, 
+        'ID_RSSD_OFFSPRING': np.int32, 
+        'ID_RSSD_PARENT': np.int32, 
+        'MB_COST': np.float64, 
+        'OTHER_BASIS_IND': np.int8, 
+        'PCT_EQUITY': np.float64, 
+        'PCT_EQUITY_BRACKET': object, 
+        'PCT_EQUITY_FORMAT': object, 
+        'PCT_OTHER': np.float64, 
+        'REASON_ROW_CRTD': np.int8, 
+        'REASON_TERM_RELN': np.int8, 
+        'REGK_INV': np.int8, 
+        'REG_IND': np.int8, 
+        'RELN_LVL': np.int8
+    }
     RELdf = pd.read_csv(csvfile, dtype=DTYPES_REL)
     RELdf.rename(columns={'#ID_RSSD_PARENT': 'ID_RSSD_PARENT'}, inplace=True)
     if (filter_asof):
@@ -294,7 +300,7 @@ def RELcsv2df(csvfile, asofdate, filter_asof=True):
 # A convenience function to look up and return the column number for the 
 # four columns composing the index in the relationships dataframe. 
 # See the function RELcsv2df for further details. 
-def REL_IDcols(RELdf):
+def REL_IDcols(RELdf: pd.DataFrame) -> tuple[int, int, int, int]:
     # Get the column numbers to dereference the values packed in the multiindex
     ID_RSSD_PARENT = RELdf.index.names.index('ID_RSSD_PARENT')
     ID_RSSD_OFFSPRING = RELdf.index.names.index('ID_RSSD_OFFSPRING')
@@ -305,18 +311,18 @@ def REL_IDcols(RELdf):
 
 def FAILcsv2df(csvfile):
     DTYPES_FAIL = {
-        'CERT':np.int32, 
-        'CHCLASS1':object, 
-        'CITYST':object, 
-        'COST':object, 
-        'FAILDATE':object, 
-        'FIN':np.int32, 
-        'NAME':object, 
-        'QBFASSET':np.int32, 
-        'QBFDEP':np.int32, 
-        'RESTYPE':object, 
-        'RESTYPE1':object, 
-        'SAVR':object, 
+        'CERT': np.int32, 
+        'CHCLASS1': object, 
+        'CITYST': object, 
+        'COST': object, 
+        'FAILDATE': object, 
+        'FIN': np.int32, 
+        'NAME': object, 
+        'QBFASSET': np.int32, 
+        'QBFDEP': np.int32, 
+        'RESTYPE': object, 
+        'RESTYPE1': object, 
+        'SAVR': object, 
     }
     faildate_parser = lambda x: pd.datetime.strptime(x, '%m/%d/%y')
     nans = {'COST': [''], 'SAVR': ['***']}
@@ -329,10 +335,10 @@ def FAILcsv2df(csvfile):
     return FAILdf
 
 
-def maps_rssd_cert(DATA):
+def maps_rssd_cert(DATA: NICData):
     rssd2cert = dict()
     cert2rssd = dict()
-    ATTdf = DATA[IDX_Attributes]
+    ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
     for idx,row in ATTdf.iterrows():
         rssd = idx
@@ -342,7 +348,7 @@ def maps_rssd_cert(DATA):
     return (rssd2cert, cert2rssd)
 
 
-def stringify_qtrend(asofdate):
+def stringify_qtrend(asofdate: int) -> int:
     """Converts an as-of date to a YYYYQQ string for the next quarter end
     """
     yyyy = int(asofdate/10000)
@@ -358,7 +364,7 @@ def stringify_qtrend(asofdate):
     return Nqtr
         
     
-def next_qtrend(asofdate):
+def next_qtrend(asofdate: int) -> int:
     """Constructs the next quarter-end date for a given as-of date
     """
     yyyy = int(asofdate/10000)
@@ -376,7 +382,7 @@ def next_qtrend(asofdate):
     return MRqtr
 
     
-def rcnt_qtrend(asofdate):
+def rcnt_qtrend(asofdate: int) -> int:
     """Constructs the next quarter-end date for a given as-of date
     """
     yyyy = int(asofdate/10000)
@@ -397,9 +403,9 @@ def rcnt_qtrend(asofdate):
 def augment_FAILdf(FAILdf, outdir, dataasof):
     FAILdf.sort_values(by=['FAILDATE'], inplace=True)
     DATA = fetch_DATA(outdir, dataasof)
-    ATTdf = DATA[IDX_Attributes]
+    ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
-    (rssd2cert, cert2rssd) = maps_rssd_cert(DATA)
+    rssd2cert, cert2rssd = maps_rssd_cert(DATA)
     FAILdf2 = FAILdf.copy(deep=True)
     FAILdf2['RSSD']=-1
     FAILdf2['RSSD_HH']=-1
@@ -407,16 +413,16 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
     FAILdf2['CNTRY_NM']=''
     FAILdf2['STATE_ABBR_NM']=''
     rcntasof = -1
-    banksys = None
+    BankSys = None
     for idx,row in FAILdf.iterrows():
         failasof = FAILdf.loc[idx]['FAILDATE']
         failasof = failasof.year*10000 + failasof.month*100 + failasof.day
         if (rcntasof != rcnt_qtrend(failasof)):
             rcntasof = rcnt_qtrend(failasof)
-            sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pik'
+            sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pkl'
             sysfilepath = os.path.join(outdir, sysfilename)
             f = open(sysfilepath, 'rb')
-            banksys = pik.load(f)
+            BankSys = pkl.load(f)
             f.close()
         cert = FAILdf.loc[idx]['CERT']
         rssd = cert2rssd[cert]
@@ -434,39 +440,22 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
 
 
 # A function to assemble the NIC data for given asofdate into a single object.
-# The returned DATA object is a list containing pointers to six objects, 
-# indexed as follows:
-#    IDX_Attributes    = 0
-#    IDX_Relationships = 1
-#    IDX_HighHolder    = 2
-#    IDX_Entities      = 3
-#    IDX_Parents       = 4
-#    IDX_Offspring     = 5
-# The first two elements are pandas dataframes, read from tab-delimited files
-def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate):
-    DATA = []
-    # First, populate DATA with the raw info from the CSV files:    
-#    csvfilepathA = os.path.join(indir, file_attA)
-#    csvfilepathB = os.path.join(indir, file_attB)
-#    csvfilepathC = os.path.join(indir, file_attC)
-#    ATTdf_a = ATTcsv2df(csvfilepathA, asofdate, 'A')
-#    ATTdf_b = ATTcsv2df(csvfilepathB, asofdate, 'B')
-#    ATTdf_c = ATTcsv2df(csvfilepathC, asofdate, 'C')
+def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate, logger=logging) -> NICData:
     ATTdf = makeATTs(indir, file_attA, file_attB, file_attC, asofdate)
-    DATA.insert(IDX_Attributes, ATTdf)
     csvfilepathR = os.path.join(indir, file_rel)
     RELdf = RELcsv2df(csvfilepathR, asofdate)
-    DATA.insert(IDX_Relationships, RELdf)
-    # Then, add derived structures based on the Relationships data:    
-    derived_data = NIC_highholders(RELdf, asofdate)
-    DATA.insert(IDX_HighHolder, derived_data[0])
-    DATA.insert(IDX_Entities, derived_data[1])
-    DATA.insert(IDX_Parents, derived_data[2])
-    DATA.insert(IDX_Offspring, derived_data[3])
-    return DATA
+    highholders, entities, parents, offspring = NIC_highholders(RELdf, asofdate, logger=logger)
+    return NICData(
+        attributes=ATTdf,
+        relationships=RELdf,
+        highholders=highholders,
+        entities=entities,
+        parents=parents,
+        offspring=offspring
+    )
 
 
-def makeATTs(indir, file_attA, file_attB, file_attC, asofdate, filter_asof=False):
+def makeATTs(indir, file_attA, file_attB, file_attC, asofdate, filter_asof=False) -> pd.DataFrame:
     csvfilepathA = os.path.join(indir, file_attA)
     csvfilepathB = os.path.join(indir, file_attB)
     csvfilepathC = os.path.join(indir, file_attC)
@@ -477,19 +466,19 @@ def makeATTs(indir, file_attA, file_attB, file_attC, asofdate, filter_asof=False
     return ATTdf
 
 
-def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=None):
+def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=None, logger=logging) -> NICData:
     DATA = None
-    datafilename = 'DATA_'+str(asofdate)+'.pik'
+    datafilename = 'DATA_'+str(asofdate)+'.pkl'
     datafilepath = os.path.join(outdir, datafilename)
-    nonefiles = (None==indir or None==fA or None==fB or None==fC or None==fREL)
-    if (os.path.isfile(datafilepath)):
+    nonefiles = (indir is None or fA is None or fB is None or fC is None or fREL is None)
+    if os.path.isfile(datafilepath):
         f = open(datafilepath, 'rb')
-        DATA = pik.load(f)
+        DATA: NICData = pkl.load(f)
         f.close()
-    elif (not(nonefiles)):
-        DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate)
+    elif not nonefiles:
+        DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate, logger=logger)
         f = open(datafilepath, 'wb')
-        pik.dump(DATA, f)
+        pkl.dump(DATA, f)
         f.close()
     return DATA
 
@@ -544,7 +533,7 @@ def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=Non
 #    y:         An int variable indicating the year, 1995
 #    q:         An int variable indicating the quarter, 3
 #    Q:         A string variable indicating the quarter, 'Q3'
-def make_asof(YYYYQQ):
+def make_asof(YYYYQQ: str) -> tuple[int, int, int, str]:
     MMDDs = [331, 630, 930, 1231]
     y = int(YYYYQQ[0:4])
     q = int(YYYYQQ[5:6])
@@ -559,11 +548,11 @@ def make_asof(YYYYQQ):
 # the asofs list, which is returned. 
 def assemble_asofs(YQ0, YQ1):
     asofs = []
-    (yyyymmdd0, Y0, q0, Q0) =  make_asof(YQ0)
-    (yyyymmdd1, Y1, q1, Q1) = make_asof(YQ1)
-    if (yyyymmdd0 > yyyymmdd1):
+    yyyymmdd0, Y0, q0, Q0 =  make_asof(YQ0)
+    yyyymmdd1, Y1, q1, Q1 = make_asof(YQ1)
+    if yyyymmdd0 > yyyymmdd1:
         print('ERROR: End date,', yyyymmdd1, 'precedes start date,', yyyymmdd0)
-    if (Y0 == Y1):
+    if Y0 == Y1:
         # Full range is within one year
         for q in range(q0,q1+1):
             asofs.append(make_asof(str(Y0)+'Q'+str(q))[0])
@@ -593,8 +582,8 @@ def assemble_asofs(YQ0, YQ1):
 #     node with no immediate parent 
 # Note that a high-holder node will have an entry in the parents dict, but
 # this entry will point to an empty set (high holders have no parents)
-def NIC_highholders(RELdf, asofdate):
-    (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END) = REL_IDcols(RELdf)
+def NIC_highholders(RELdf, asofdate, logger=logging) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]:
+    ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
     # Create some containers for derived structures
     parents = {}     # Dictionary of immediate parents (a set) for each node
     offspring = {}   # Dictionary of immediate children (a set) for each node
@@ -606,8 +595,11 @@ def NIC_highholders(RELdf, asofdate):
         date1 = int(row[0][DT_END])
         rssd_par = row[0][ID_RSSD_PARENT]
         rssd_off = row[0][ID_RSSD_OFFSPRING]
-        if (asofdate < date0 or asofdate > date1):
-            print('WARNING: asofdate:', asofdate, 'in out of bounds:', rssd_par, rssd_off, date0, date1, 'in NIC_highholders')
+        if asofdate < date0 or date1 < asofdate:
+            logger.warning(
+                'asofdate: %s in out of bounds: %d, %d, %d, %d in NIC_highholders',
+                asofdate, rssd_par, rssd_off, date0, date1
+            )
             continue   
         entities.add(rssd_par)
         try:
