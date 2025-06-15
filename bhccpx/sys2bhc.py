@@ -222,6 +222,8 @@ def make_bhcs(config: ConfigParser, logger=logging):
     asof_list = []
     for YQ in ast.literal_eval(config.get('sys2bhc', 'asoflist')):
         asof_list.append(bhc_datautil.make_asof(YQ)[0])
+    if len(asof_list) == 0:
+        asof_list = bhc_datautil.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     if config.getboolean('sys2bhc', 'clearcache'):
         clear_cache(config.get('sys2bhc', 'outdir'), asof_list)
     if config.getint('sys2bhc', 'parallel') > 0:

@@ -122,13 +122,13 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
         logger.debug('CSV file path: %s %s', csvfilepath, asofdate)
 
         RELdf = bhc_datautil.RELcsv2df(csvfilepath, asofdate)
-        (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END) = bhc_datautil.REL_IDcols(RELdf)
+        ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = bhc_datautil.REL_IDcols(RELdf)
         for row in RELdf.iterrows():
             date0 = int(row[0][DT_START])
             date1 = int(row[0][DT_END])
             rssd_par = row[0][ID_RSSD_PARENT]
             rssd_off = row[0][ID_RSSD_OFFSPRING]
-            if (asofdate < date0 or asofdate > date1):
+            if asofdate < date0 or asofdate > date1:
                 logger.info('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
                 continue   
             BankSys.add_edge(rssd_par, rssd_off)

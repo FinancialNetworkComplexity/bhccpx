@@ -104,10 +104,12 @@ def parse_command_line(argv, config, modulefile):
     except Usage as err:
         print(err.msg, file=sys.stderr)
         print("for help use --help", file=sys.stderr)
-        return 2
-    if (showconfig):
+        raise err
+    
+    if showconfig:
         print_config(config, modulefile)
     return config
+
 class Usage(Exception):
     def __init__(self, msg):
         self.msg = msg
