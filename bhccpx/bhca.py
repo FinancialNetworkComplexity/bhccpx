@@ -23,17 +23,21 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+from typing import Any
 import networkx as nx
+from enum import Enum
+import logging
 import re
 
-Q_FULL = 1
-Q_HETERO = 2
-Q_FULL_COND = 3
-Q_HETERO_COND = 4
+
+class QType(Enum):
+    FULL = 1
+    HETERO = 2
+    FULL_COND = 3
+    HETERO_COND = 4
 
 
-
-def get_labels(BHC, dimen, missings=dict()):
+def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
     """Gets all possible node labels associated with the attibute key (dimen)
     
     Scans the given BHC graph for all node attributes with attribute name
@@ -89,7 +93,7 @@ def get_labels(BHC, dimen, missings=dict()):
 
 
 
-def get_quotient(BHC, dimen, Qtype):
+def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     """Calculate the quotient of BHC, partitioning by a given dimension
     
     In a quotient, the nodes of the original graph (BHC) are partitioned
@@ -106,17 +110,17 @@ def get_quotient(BHC, dimen, Qtype):
     from the original graph (BHC) translate to edges in the quotient 
     graph (BHCq):
         
-      1. Full quotient (Q_FULL): Every edge in BHC translates to an edge
+      1. Full quotient (QType.FULL): Every edge in BHC translates to an edge
          between  the matching partition nodes in BHCq. For example, for the 
          edge (u,v) in BHC, where u has entity type 'NAT' and v has 
          entity type 'IHC', the quotient graph would have a matching
          edge (NAT, IHC).
-      2. Heterogeneous quotient (Q_HETERO): A subgraph of the full quotient, 
+      2. Heterogeneous quotient (QType.HETERO): A subgraph of the full quotient, 
          in which any parallel edges between two nodes are collapsed into 
          a single edge. 
-      3. Full condensed quotient (Q_FULL_COND): A subgraph of the full 
+      3. Full condensed quotient (QType.FULL_COND): A subgraph of the full 
          quotient, in which any self-loop edges are removed. 
-      4. Heterogeneous condensed quotient (Q_HETERO_COND): A subgraph of 
+      4. Heterogeneous condensed quotient (QType.HETERO_COND): A subgraph of 
          the heterogeneous quotient, in which any self-loop edges are removed. 
     
     Parameters
@@ -128,10 +132,10 @@ def get_quotient(BHC, dimen, Qtype):
     Qtype : int
         Indicator of the quotient type to calculate, one of:
             
-            1. Q_FULL
-            2. Q_HETERO
-            3. Q_FULL_COND
-            4. Q_HETERO_COND
+            1. QType.FULL
+            2. QType.HETERO
+            3. QType.FULL_COND
+            4. QType.HETERO_COND
     
     Returns
     -------
@@ -145,65 +149,63 @@ def get_quotient(BHC, dimen, Qtype):
     >>> import bhc_testutil as TEST
     >>> BHCa = TEST.BHC_attribDAG()
     
-    Full quotient (Q_FULL) by the geographic jurisdiction labels:
+    Full quotient (QType.FULL) by the geographic jurisdiction labels:
         
-    >>> get_quotient(BHCa, 'GEO_JURISD', Q_FULL).number_of_nodes()
+    >>> get_quotient(BHCa, 'GEO_JURISD', QType.FULL).number_of_nodes()
     4
-    >>> get_quotient(BHCa, 'GEO_JURISD', Q_FULL).number_of_edges()
+    >>> get_quotient(BHCa, 'GEO_JURISD', QType.FULL).number_of_edges()
     6
 
-    Full quotient (Q_FULL) by the entity type labels:
+    Full quotient (QType.FULL) by the entity type labels:
         
-    >>> get_quotient(BHCa, 'entity_type', Q_FULL).number_of_nodes()
+    >>> get_quotient(BHCa, 'entity_type', QType.FULL).number_of_nodes()
     3
-    >>> get_quotient(BHCa, 'entity_type', Q_FULL).number_of_edges()
+    >>> get_quotient(BHCa, 'entity_type', QType.FULL).number_of_edges()
     6
 
-    Heterogenous condensed quotient (Q_HETERO_COND) by the entity type labels:
+    Heterogenous condensed quotient (QType.HETERO_COND) by the entity type labels:
         
-    >>> get_quotient(BHCa, 'entity_type', Q_HETERO_COND).number_of_nodes()
+    >>> get_quotient(BHCa, 'entity_type', QType.HETERO_COND).number_of_nodes()
     3
-    >>> get_quotient(BHCa, 'entity_type', Q_HETERO_COND).number_of_edges()
+    >>> get_quotient(BHCa, 'entity_type', QType.HETERO_COND).number_of_edges()
     2
 
     """
     BHCu = BHC.to_undirected()
     # BHCq is the (undirected) quotient graph to be derived from BHC
-    BHCq = None
-    if (Q_FULL==Qtype):          # Full (multi-edges and self-loops)
+    if Qtype in [QType.FULL, QType.HETERO]:
+        # Full (multi-edges and self-loops)
+        # Heterogeneous (multi-edges, no self-loops)
         BHCq = nx.MultiGraph()
-    elif (Q_HETERO==Qtype):      # Heterogeneous (multi-edges, no self-loops)
-        BHCq = nx.MultiGraph()
-    elif (Q_FULL_COND==Qtype):   # Condensed (self-loops, but no multi-edges)
-        BHCq = nx.Graph()
-    elif (Q_HETERO_COND==Qtype): # Cond. heterog. (no multi-edges/self-loops)
-        BHCq = nx.Graph()
     else:
-        print('WARNING: Unrecognized Qtype', Qtype)
-        return
+        # Condensed (self-loops, but no multi-edges)
+        # Heterogeneous condensed (no multi-edges/self-loops)
+        BHCq = nx.Graph()
+    
     # Establish the nodes of the quotient
-    entity_types = nx.get_node_attributes(BHCu,'entity_type')
+    entity_types = nx.get_node_attributes(BHCu, 'entity_type')
     nx.set_node_attributes(BHCq, entity_types)
+
     # Copy edges from the BHC to the quotient
     for e in BHCu.edges(data=True):
         parent = e[0]
         child = e[1]
         e_attrs = e[2]
-        if ((dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child])):
+        if (dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child]):
             parent_label = BHCu.nodes[parent][dimen]
             child_label = BHCu.nodes[child][dimen]
             BHCq.add_edge(parent_label, child_label, attr_dict=e_attrs)
+
     # Remove self-loops, as appropriate
-    if (2==Qtype or 4==Qtype):
+    if Qtype in [QType.HETERO, QType.HETERO_COND]:
         removals = list(nx.selfloop_edges(BHCq))
         BHCq.remove_edges_from(removals)
-    # Wrap up
-    #print('Summing up:', BHC.number_of_nodes(), BHC.number_of_edges(), BHCq.number_of_nodes(), BHCq.number_of_edges())
+    
     return BHCq
 
 
 
-def node_equals(u, v, G, dimen):
+def node_equals(u, v, G: nx.DiGraph, dimen: str):
     """Test whether two nodes (u,v) are equal along a given attribute dimension 
     
     Two nodes (u,v) in a graph (G) are equal along an attribute 
@@ -265,7 +267,7 @@ def node_equals(u, v, G, dimen):
     
     """
     testval = False
-    if (dimen in G.nodes[u] and dimen in G.nodes[v]):
+    if dimen in G.nodes[u] and dimen in G.nodes[v]:
         testval = (G.nodes[u][dimen] == G.nodes[v][dimen])
     return testval
     
@@ -276,7 +278,7 @@ def node_equals(u, v, G, dimen):
 #    #print('Summing up:', BHC.number_of_nodes(), BHC.number_of_edges(), BHCq.number_of_nodes(), BHCq.number_of_edges())
 #    return BHCq
 
-def contract(BHC, dimen):
+def contract(BHC: nx.DiGraph, dimen: str):
     # BHCdup is a deep copy of the BHC graph
     BHCdup = BHC.copy()
     edges_contracted = set()
@@ -304,32 +306,31 @@ def contract(BHC, dimen):
             edges_contracted.add(e)
         else:
             edges_uncontract.add(e)
-    #print('Summing up:', BHCdup.number_of_edges(), len(edges_contracted), len(edges_uncontract), BHC.number_of_edges(), BHC.number_of_nodes())
     return BHC, len(edges_contracted), len(edges_uncontract)
 
-def get_contraction(BHC, dimen):
+def get_contraction(BHC: nx.DiGraph, dimen: str):
     #root = BHC.graph['rootnode']
     number_of_edges_contracted  = -1
     BHCcont = BHC.copy()
-    while (number_of_edges_contracted != 0):
+    while number_of_edges_contracted != 0:
         BHCcont, number_of_edges_contracted, n_unc = contract(BHCcont, dimen)
     BHCcont.remove_edges_from(nx.selfloop_edges(BHCcont))
     return BHCcont
 
-def get_disjoint_maximal_homogeneous_subgraphs(BHC, dimen):
+def get_disjoint_maximal_homogeneous_subgraphs(BHC: nx.DiGraph, dimen: str):
     BHCu = BHC.to_undirected()
     BHCdisj = BHCu.copy()
     for e in BHCu.edges(data=True):
         parent = e[0]
         child = e[1]
-        if ((dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child])):
+        if (dimen in BHCu.nodes[parent]) and (dimen in BHCu.nodes[child]):
             if not(node_equals(parent, child, BHCu, dimen)):
                 BHCdisj.remove_edge(parent, child)
     return BHCdisj
 
 
 
-def number_of_components(BHC):
+def number_of_components(BHC: nx.DiGraph):
     """Counts the connected components in the undirected projection of BHC.
     
     Parameters
@@ -366,7 +367,7 @@ def number_of_components(BHC):
 
 
 
-def edge_count(BHC):
+def edge_count(BHC: nx.DiGraph):
     """Counts the number of edges in the undirected projection of BHC.
     
     For the given BHC (DiGraph) object, count the edges in its undirected 
@@ -405,13 +406,13 @@ def edge_count(BHC):
     return BHCu.number_of_edges()
 
 
-def cycle_rank(BHC):
+def cycle_rank(BHC: nx.DiGraph):
     BHCu = BHC.to_undirected()
     b0 = number_of_components(BHCu)
     rv = BHCu.number_of_edges() - BHCu.number_of_nodes() + b0
     return rv
 
-def aggregate_weight(BHC, weights):
+def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
     # Return the total weight of a BHC, where weights is a dict
     # providing the weight of individual subsidiaries, keyed by RSSD.
     # If a given subsidiary has no weight in the weights dict, then 
@@ -427,7 +428,7 @@ def aggregate_weight(BHC, weights):
 
 
 
-def find_highholders(BankSys, rssd):
+def find_highholders(BankSys: nx.DiGraph, rssd: int, logger=logging):
     """Scans a banking system to find all high holders for a given entity.
     
     The banking system (BankSys) object is a directed graph, with edge
@@ -479,20 +480,20 @@ def find_highholders(BankSys, rssd):
     
     """
     HHs = []
-    if BankSys.__contains__(rssd):
+    if rssd in BankSys:
         ancs = nx.ancestors(BankSys, rssd)
         ancs.add(rssd)
         for n in ancs:
-            if 0 == len(list(BankSys.predecessors(n))):
+            if len(list(BankSys.predecessors(n))) == 0:
                 HHs.append(n)
     else:
-        print('Cannot find', rssd, 'in BankSys')
+        logger.warning('Cannot find %s in BankSys', str(rssd))
         HHs.append(None)
     return HHs
 
 
            
-def check_lei(lei, display_warnings=True):
+def check_lei(lei: str, display_warnings: bool = True, logger=logging):
     """Verify the checksum on a candidate Legal Entity Identifier (LEI).
     
     Under international standard ISO/CD 17442, LEIs may be issued for 
@@ -566,28 +567,24 @@ def check_lei(lei, display_warnings=True):
     """
     check = -1
     syntax_errcodes = []
-    if (len(lei) > 20):
+    if len(lei) > 20:
         syntax_errcodes.append(1)
-        if (display_warnings): 
-            print('WARNING: LEI value is too long:', lei, len(lei))
-    if (len(lei) < 20):
+        logger.warning('LEI value is too long: %s (length %d)', lei, len(lei))
+    if len(lei) < 20:
         syntax_errcodes.append(2)
-        if (display_warnings): 
-            print('WARNING: LEI value is too short:', lei, len(lei))
-    if (lei.upper() != lei):
+        logger.warning('LEI value is too short: %s (length %d)', lei, len(lei))
+    if lei.upper() != lei:
         syntax_errcodes.append(3)
-        if (display_warnings): 
-            print('WARNING: LEI value is not uppercase:', lei)
-    if (None==re.search(r'^[0-9A-Z]{18}[0-9]{2}$', lei)):
+        logger.warning('LEI value is not uppercase: %s', lei)
+    if None==re.search(r'^[0-9A-Z]{18}[0-9]{2}$', lei):
         syntax_errcodes.append(4)
-        if (display_warnings): 
-            print('WARNING: LEI does not match the official format:', lei)
-    if (lei[len(lei)-2:len(lei)] in ['00', '01', '99']):
+        logger.warning('LEI does not match the official format: %s', lei)
+    if lei[len(lei)-2:len(lei)] in ['00', '01', '99']:
         syntax_errcodes.append(5)
-        if (display_warnings): 
-            print('WARNING: LEI checkdigits in invalid range [00,01,99]:', lei)
+        logger.warning('LEI checkdigits are in the invalid range [00, 01, 99]: %s', lei)
+    
     # If no syntax flaws are detected, go ahead and perform the checksum
-    if (0==len(syntax_errcodes)):
+    if len(syntax_errcodes) == 0:
         ASC_A = ord('A')
         buff = ''
         for i in range(len(lei)):
@@ -601,10 +598,9 @@ def check_lei(lei, display_warnings=True):
                 buff = buff + str(char_i)
         # A valid (digitized) LEI should have modulus 1:
         check = int(buff) % 97
-        if (display_warnings and 1!=check): 
-            print('WARNING: LEI fails checksum:', lei, "modulus="+str(check))
+        if check != 1:
+            logger.warning('LEI checksum failed: %s (modulus %d)', lei, check)
     return (check, syntax_errcodes)
-
 
 
 if __name__ == "__main__":

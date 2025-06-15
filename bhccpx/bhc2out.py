@@ -32,54 +32,77 @@ import pandas as pd
 import graphviz as gv
 import progressbar as pb
 import multiprocessing as mp
+from enum import StrEnum
+import networkx as nx
+import pickle as pkl
+import logging
+from logging import Logger
 
+import bhc_datautil
 import csv2sys
 import sys2bhc
 import bhca
 
-import bhc_datautil
-from bhc_datautil import NICData
-import logging
-from logging import Logger
-
 
 # String constants for metric names
-M_BVct = 'Bas_Vertex_count'
-M_BEct = 'Bas_Edge_count'
-M_BCrk = 'Bas_Cycle_rank'
-M_BCmp = 'Bas_Num_CComp'
-M_EQfxB = 'Ent_Qfull_B1'
-M_EQhxB = 'Ent_Qhetr_B1'
-M_EQfcB = 'Ent_Qfcon_B1'
-M_EQhcB = 'Ent_Qhcon_B1'
-M_EQecB = 'Ent_edgcn_B1'
-M_EDHmB = 'Ent_DjHom_B1'
-M_EDHmM = 'Ent_DjHom_M'
-M_ENlbl = 'Ent_Nlabl'
-M_GQfxB = 'Geo_Qfull_B1'
-M_GQhxB = 'Geo_Qhetr_B1'
-M_GQfcB = 'Geo_Qfcon_B1'
-M_GQhcB = 'Geo_Qhcon_B1'
-M_GQecB = 'Geo_edgcn_B1'
-M_GDHmB = 'Geo_DjHom_B1'
-M_GDHmM = 'Geo_DjHom_M'
-M_GNlbl = 'Geo_Nlabl'
+class Metrics(StrEnum):
+    BVct = 'Bas_Vertex_count'
+    BEct = 'Bas_Edge_count'
+    BCrk = 'Bas_Cycle_rank'
+    BCmp = 'Bas_Num_CComp'
+    EQfxB = 'Ent_Qfull_B1'
+    EQhxB = 'Ent_Qhetr_B1'
+    EQfcB = 'Ent_Qfcon_B1'
+    EQhcB = 'Ent_Qhcon_B1'
+    EQecB = 'Ent_edgcn_B1'
+    EDHmB = 'Ent_DjHom_B1'
+    EDHmM = 'Ent_DjHom_M'
+    ENlbl = 'Ent_Nlabl'
+    GQfxB = 'Geo_Qfull_B1'
+    GQhxB = 'Geo_Qhetr_B1'
+    GQfcB = 'Geo_Qfcon_B1'
+    GQhcB = 'Geo_Qhcon_B1'
+    GQecB = 'Geo_edgcn_B1'
+    GDHmB = 'Geo_DjHom_B1'
+    GDHmM = 'Geo_DjHom_M'
+    GNlbl = 'Geo_Nlabl'
 
 
-# A dedicated function that produces the summary comparison of complexity
-# measures for the Wachovia-Wells Fargo case study. This appears as Table 2
-# in the NBER version of the paper
-def make_wachwells_comparison(config: ConfigParser, logger: Logger = logging):
-    bhc_datautil.print_config(config, __file__)
-    # BHCconfigs lists all of the (RSSD,asofdate) pairs to process
-    # RSSD 1073551 is Wachovia Corp.
-    # RSSD 1120754 is Wells Fargo & Co.
-    BHCconfigs = [(1120754,20061231),
-                  (1073551,20061231),
-                  (1120754,20080930), 
-                  (1073551,20080930),
-                  (1120754,20081231),
-                  (1120754,20101231)]
+def extractBHC_cached(config: ConfigParser, asofdate: str, rssd: int, logger: Logger = logging) -> nx.DiGraph:
+    bhcfilename = 'NIC_'+str(rssd)+'_'+str(asofdate)+'.pkl'
+    bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
+    if os.path.exists(bhcfilepath):
+        with open(bhcfilepath, 'rb') as f:
+            return pkl.load(f)
+    else:
+        logger.warning('BHC file %s does not exist. Extracting BHC from scratch.', bhcfilepath)
+        BHC = sys2bhc.extractBHC(config, asofdate, rssd)
+        with open(bhcfilepath, 'wb') as f:
+            pkl.dump(BHC, f)
+        return BHC
+
+
+def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigParser, logger: Logger = logging) -> pd.DataFrame:
+    """
+    A dedicated function that produces the summary comparison of complexity
+    measures for the Wachovia-Wells Fargo case study. This appears as Table 2
+    in the NBER version of the paper.
+
+    Parameters
+    ----------
+    BHCconfigs : list[tuple[int, int]]
+        A list of (rssd, asofdate) tuples to be processed
+    config : ConfigParser
+        Configuration object containing settings for the BHC Complexity Toolkit
+    logger : Logger, optional
+        Logger object for logging messages, by default logging
+    
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the complexity metrics for Wachovia and Wells Fargo
+        at specified as-of dates.
+    """
     # Loop to extract all of BHC snapshots defined by BHCconfigs
     bar = None
     metrics = None
@@ -91,7 +114,7 @@ def make_wachwells_comparison(config: ConfigParser, logger: Logger = logging):
     # bar.start()
     for rssd, asof in BHCconfigs:
         idx = idx + 1
-        BHC = sys2bhc.extractBHC(config, asof, rssd)
+        BHC = extractBHC_cached(config, asof, rssd)
         metrics = complexity_workup(BHC)
         BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
         # bar.update(idx)
@@ -104,9 +127,9 @@ def make_wachwells_comparison(config: ConfigParser, logger: Logger = logging):
     table2.sort_values(['rssd','asofdate'],ascending=[True,True],inplace=True)
     # bar.update(bar.max_value)
     # bar.finish(end='', dirty=True)
-    logger.info(table2.iloc[:,2:6])
-    logger.info(table2.iloc[:,6:14])
-    logger.info(table2.iloc[:,14:22])
+    logger.debug(table2.iloc[:,2:6])
+    logger.debug(table2.iloc[:,6:14])
+    logger.debug(table2.iloc[:,14:22])
     logger.info('*** Processing Table2 Complete ***')
     return table2
 
@@ -138,7 +161,7 @@ def complexity_workup(BHC) -> dict[str, int]:
       * Ent_DjHom_M = 'Ent_DjHom_M'
       * Ent_Nlabl = 'Ent_Nlabl'
       
-    B. Beography quotients
+    B. Geography quotients
     
       * Geo_Qfull_B1 = 'Geo_Qfull_B1'
       * Geo_Qhetr_B1 = 'Geo_Qhetr_B1'
@@ -162,44 +185,44 @@ def complexity_workup(BHC) -> dict[str, int]:
 
     metrics = dict()
     # Basic metrics, using the key constants defined above
-    metrics[M_BVct] = BHC.number_of_nodes()
-    metrics[M_BEct] = bhca.edge_count(BHC)
-    metrics[M_BCrk] = bhca.cycle_rank(BHC)
-    metrics[M_BCmp] = bhca.number_of_components(BHC)
+    metrics[Metrics.BVct] = BHC.number_of_nodes()
+    metrics[Metrics.BEct] = bhca.edge_count(BHC)
+    metrics[Metrics.BCrk] = bhca.cycle_rank(BHC)
+    metrics[Metrics.BCmp] = bhca.number_of_components(BHC)
 
     # Quotiented by entity type
     DIMEN = 'entity_type'
-    QEF = bhca.get_quotient(BHC, DIMEN, bhca.Q_FULL)
-    QEH = bhca.get_quotient(BHC, DIMEN, bhca.Q_HETERO)
-    QEFC = bhca.get_quotient(BHC, DIMEN, bhca.Q_FULL_COND)
-    QEHC = bhca.get_quotient(BHC, DIMEN, bhca.Q_HETERO_COND)
+    QEF = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL)
+    QEH = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO)
+    QEFC = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL_COND)
+    QEHC = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO_COND)
     CE = bhca.get_contraction(BHC, DIMEN).to_undirected()
     DMHE = bhca.get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[M_EQfxB] = bhca.cycle_rank(QEF)
-    metrics[M_EQhxB] = bhca.cycle_rank(QEH)
-    metrics[M_EQfcB] = bhca.cycle_rank(QEFC)
-    metrics[M_EQhcB] = bhca.cycle_rank(QEHC)
-    metrics[M_EQecB] = bhca.cycle_rank(CE)
-    metrics[M_EDHmB] = bhca.cycle_rank(DMHE)
-    metrics[M_EDHmM] = bhca.number_of_components(DMHE)
-    metrics[M_ENlbl] = len(bhca.get_labels(BHC, DIMEN))
+    metrics[Metrics.EQfxB] = bhca.cycle_rank(QEF)
+    metrics[Metrics.EQhxB] = bhca.cycle_rank(QEH)
+    metrics[Metrics.EQfcB] = bhca.cycle_rank(QEFC)
+    metrics[Metrics.EQhcB] = bhca.cycle_rank(QEHC)
+    metrics[Metrics.EQecB] = bhca.cycle_rank(CE)
+    metrics[Metrics.EDHmB] = bhca.cycle_rank(DMHE)
+    metrics[Metrics.EDHmM] = bhca.number_of_components(DMHE)
+    metrics[Metrics.ENlbl] = len(bhca.get_labels(BHC, DIMEN))
 
     # Quotiented by geographic jurisdiction
     DIMEN = 'GEO_JURISD'
-    QGF = bhca.get_quotient(BHC, DIMEN, bhca.Q_FULL)
-    QGH = bhca.get_quotient(BHC, DIMEN, bhca.Q_HETERO)
-    QGFC = bhca.get_quotient(BHC, DIMEN, bhca.Q_FULL_COND)
-    QGHC = bhca.get_quotient(BHC, DIMEN, bhca.Q_HETERO_COND)
+    QGF = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL)
+    QGH = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO)
+    QGFC = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL_COND)
+    QGHC = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO_COND)
     CG = bhca.get_contraction(BHC, DIMEN).to_undirected()
     DMHG = bhca.get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[M_GQfxB] = bhca.cycle_rank(QGF)
-    metrics[M_GQhxB] = bhca.cycle_rank(QGH)
-    metrics[M_GQfcB] = bhca.cycle_rank(QGFC)
-    metrics[M_GQhcB] = bhca.cycle_rank(QGHC)
-    metrics[M_GQecB] = bhca.cycle_rank(CG)
-    metrics[M_GDHmB] = bhca.cycle_rank(DMHG)
-    metrics[M_GDHmM] = bhca.number_of_components(DMHG)
-    metrics[M_GNlbl] = len(bhca.get_labels(BHC, DIMEN))
+    metrics[Metrics.GQfxB] = bhca.cycle_rank(QGF)
+    metrics[Metrics.GQhxB] = bhca.cycle_rank(QGH)
+    metrics[Metrics.GQfcB] = bhca.cycle_rank(QGFC)
+    metrics[Metrics.GQhcB] = bhca.cycle_rank(QGHC)
+    metrics[Metrics.GQecB] = bhca.cycle_rank(CG)
+    metrics[Metrics.GDHmB] = bhca.cycle_rank(DMHG)
+    metrics[Metrics.GDHmM] = bhca.number_of_components(DMHG)
+    metrics[Metrics.GNlbl] = len(bhca.get_labels(BHC, DIMEN))
 
     return metrics
 
@@ -208,54 +231,57 @@ def complexity_workup(BHC) -> dict[str, int]:
 # both entity type and geographic jurisdiction, and returns them as a dict.
 def test_metrics(metrics: dict[str, int], context: str, logger: Logger = logging):
     # Ensure that the BHC is a single connected component
-    if metrics[M_BCmp] != 1:
-        logger.warning("BHC is not completely connected. %s: %s, Context: %s", M_BCmp, metrics[M_BCmp], context)
+    if metrics[Metrics.BCmp] != 1:
+        logger.warning("BHC is not completely connected. %s: %s, Context: %s", Metrics.BCmp, metrics[Metrics.BCmp], context)
     
     # Confirm that Equation 3 (Euler-Poincare) holds
-    if metrics[M_BCrk] != metrics[M_BEct] - metrics[M_BVct] + metrics[M_BCmp]:
+    if metrics[Metrics.BCrk] != metrics[Metrics.BEct] - metrics[Metrics.BVct] + metrics[Metrics.BCmp]:
         logger.warning(
             'Euler-Poincare fails. %s: %s, %s: %s, %s: %s, %s: %s, Context: %s',
-            M_BCrk, metrics[M_BCrk], M_BEct, metrics[M_BEct],
-            M_BVct, metrics[M_BVct], M_BCmp, metrics[M_BCmp], context
+            Metrics.BCrk, metrics[Metrics.BCrk], Metrics.BEct, metrics[Metrics.BEct],
+            Metrics.BVct, metrics[Metrics.BVct], Metrics.BCmp, metrics[Metrics.BCmp], context
         )
 
     # Confirm that Theorem 3.2 Equation 6 (NBER version) holds -- entity type
-    if metrics[M_EQfxB] != metrics[M_BCrk] + metrics[M_BVct] - metrics[M_ENlbl]:
+    if metrics[Metrics.EQfxB] != metrics[Metrics.BCrk] + metrics[Metrics.BVct] - metrics[Metrics.ENlbl]:
         logger.warning(
             'Theorem 3.2 fails. %s: %s, %s: %s, %s: %s, %s: %s, Context: %s',
-            M_EQfxB, metrics[M_EQfxB], M_BCrk, metrics[M_BCrk],
-            M_BVct, metrics[M_BVct], M_ENlbl, metrics[M_ENlbl], context
+            Metrics.EQfxB, metrics[Metrics.EQfxB], Metrics.BCrk, metrics[Metrics.BCrk],
+            Metrics.BVct, metrics[Metrics.BVct], Metrics.ENlbl, metrics[Metrics.ENlbl], context
         )
     
     # Confirm that Corollary 3.4 (NBER version) holds -- entity type
-    if metrics[M_EQhxB] != metrics[M_EDHmM] - metrics[M_ENlbl] + metrics[M_BCrk] - metrics[M_EDHmB]:
+    if metrics[Metrics.EQhxB] != metrics[Metrics.EDHmM] - metrics[Metrics.ENlbl] + metrics[Metrics.BCrk] - metrics[Metrics.EDHmB]:
         logger.warning(
             'Corollary 3.4 fails. %s: %s, %s: %s, %s: %s, %s: %s, %s: %s, Context: %s',
-            M_EQhxB, metrics[M_EQhxB], M_EDHmM, metrics[M_EDHmM], M_ENlbl, metrics[M_ENlbl],
-            M_BCrk, metrics[M_BCrk], M_EDHmB, metrics[M_EDHmB], context
+            Metrics.EQhxB, metrics[Metrics.EQhxB], Metrics.EDHmM, metrics[Metrics.EDHmM], Metrics.ENlbl, metrics[Metrics.ENlbl],
+            Metrics.BCrk, metrics[Metrics.BCrk], Metrics.EDHmB, metrics[Metrics.EDHmB], context
         )
 
     # Confirm that Theorem 3.2 Equation 6 (NBER version) holds -- geography
-    if metrics[M_GQfxB] != metrics[M_BCrk] + metrics[M_BVct] - metrics[M_GNlbl]:
+    if metrics[Metrics.GQfxB] != metrics[Metrics.BCrk] + metrics[Metrics.BVct] - metrics[Metrics.GNlbl]:
         logger.warning(
             'Theorem 3.2 fails (Geographic quotient). %s: %s, %s: %s, %s: %s, %s: %s, Context: %s',
-            M_GQfxB, metrics[M_GQfxB], M_BCrk, metrics[M_BCrk],
-            M_BVct, metrics[M_BVct], M_GNlbl, metrics[M_GNlbl], context
+            Metrics.GQfxB, metrics[Metrics.GQfxB], Metrics.BCrk, metrics[Metrics.BCrk],
+            Metrics.BVct, metrics[Metrics.BVct], Metrics.GNlbl, metrics[Metrics.GNlbl], context
         )
         
     # Confirm that Corollary 3.4 (NBER version) holds -- geography
-    if metrics[M_GQhxB] != metrics[M_GDHmM] - metrics[M_GNlbl] + metrics[M_BCrk] - metrics[M_GDHmB]:
+    if metrics[Metrics.GQhxB] != metrics[Metrics.GDHmM] - metrics[Metrics.GNlbl] + metrics[Metrics.BCrk] - metrics[Metrics.GDHmB]:
         logger.warning(
             'Corollary 3.4 fails (Geographic quotient). %s: %s, %s: %s, %s: %s, %s: %s, %s: %s, Context: %s',
-            M_GQhxB, metrics[M_GQhxB], M_GDHmM, metrics[M_GDHmM], M_GNlbl, metrics[M_GNlbl],
-            M_BCrk, metrics[M_BCrk], M_GDHmB, metrics[M_GDHmB], context
+            Metrics.GQhxB, metrics[Metrics.GQhxB], Metrics.GDHmM, metrics[Metrics.GDHmM], Metrics.GNlbl, metrics[Metrics.GNlbl],
+            Metrics.BCrk, metrics[Metrics.BCrk], Metrics.GDHmB, metrics[Metrics.GDHmB], context
         )
         
-# Create an SVG image file representing a BHC. The file is stored in the 
-# outdir, with the filename: RSSD_<rssd_hh>_<asofdate>.svg.
-# If popup is set to True, then the function will also launch a browser to
-# display the file.
-def makeSVG(config: ConfigParser, BHC, outdir, rssd_hh, asofdate, popup=False, logger: Logger = logging):
+def makeSVG(config: ConfigParser, BHC: nx.DiGraph, outdir, rssd_hh, asofdate: str, popup=False, logger: Logger = logging):
+    """
+    Create an SVG image file representing a BHC.
+    The file is stored in the outdir, with the filename: RSSD_<rssd_hh>_<asofdate>.svg.
+
+    If popup is set to True, then the function will also launch a browser to
+    display the file.
+    """
     svg_filename = 'RSSD'+'_'+str(rssd_hh)+'_'+str(asofdate)
     svg_file = outdir + svg_filename
     colormap = ast.literal_eval(config.get('bhc2out', 'colormap'))
@@ -299,10 +325,11 @@ def makeSVG(config: ConfigParser, BHC, outdir, rssd_hh, asofdate, popup=False, l
         os.system("%s %s" % (config.get('bhc2out', 'browsercmd'), svg_file+'.svg'))
 
 
-# Create a full panel of complexity measures for all BHCs for all quarters in 
-# the list of as-of dates between asofdate0 and asofdate1.
 def make_panel(config: ConfigParser, logger: Logger = logging):
-    bhc_datautil.print_config(config, __file__)
+    """
+    Create a full panel of complexity measures for all BHCs for all quarters
+    in the list of as-of dates between asofdate0 and asofdate1.
+    """
     asof_list = bhc_datautil.assemble_asofs(config.get('bhc2out', 'asofdate0'), config.get('bhc2out', 'asofdate1'))
     if config.getint('bhc2out', 'parallel') > 0:
         logger.info('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
@@ -370,12 +397,24 @@ def all_bhc_complex(config: ConfigParser, asofdate, logger=logging):
 def main(argv=None):
     config = bhc_datautil.read_config()
     config = bhc_datautil.parse_command_line(argv, config, __file__)
+    logger = logging.getLogger("bhc2out")
     
     if config.getboolean('bhc2out', 'make_panel'):
         make_panel(config)
     
     if config.getboolean('bhc2out', 'make_wachwells_comparison'):
-        make_wachwells_comparison(config)
+        # Default configs to run
+        # RSSD 1073551 is Wachovia Corp.
+        # RSSD 1120754 is Wells Fargo & Co.
+        BHCconfigs = [
+            (1120754,20061231),
+            (1073551,20061231),
+            (1120754,20080930), 
+            (1073551,20080930),
+            (1120754,20081231),
+            (1120754,20101231)
+        ]
+        make_wachwells_comparison(BHCconfigs, config, logger=logger)
     
     
 if __name__ == "__main__":
