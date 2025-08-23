@@ -116,8 +116,8 @@ class Usage(Exception):
 
 
 
-# Reads the application configuration from the bhc_complex.ini file
-def read_config(config_file='bhc_complex.ini'):
+# Reads the application configuration from the BHCCPX.ini file
+def read_config(config_file='BHCCPX.ini'):
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
     # It is safe to configure logging repeatedly; extra calls get ignored
