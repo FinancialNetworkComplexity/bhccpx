@@ -219,11 +219,12 @@ def make_bhcs(config: ConfigParser, logger=logging):
     Loop over all dates in the asoflist (in config). For each date, extract
     all the BHCs in the bhclist.
     """
-    asof_list = []
-    for YQ in ast.literal_eval(config.get('sys2bhc', 'asoflist')):
-        asof_list.append(bhc_datautil.make_asof(YQ)[0])
-    if len(asof_list) == 0:
+    asof_list = ast.literal_eval(config.get('sys2bhc', 'asoflist'))
+    if asof_list is None:
+        # Include all dates in range when provided asof_list is None
         asof_list = bhc_datautil.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+    else:
+        asof_list = list(map(lambda YQ: bhc_datautil.make_asof(YQ)[0], asof_list))
     if config.getboolean('sys2bhc', 'clearcache'):
         clear_cache(config.get('sys2bhc', 'outdir'), asof_list)
     if config.getint('sys2bhc', 'parallel') > 0:

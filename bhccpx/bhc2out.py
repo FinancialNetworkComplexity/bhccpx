@@ -377,7 +377,7 @@ def all_bhc_complex(config: ConfigParser, asofdate, logger=logging):
     BankSys = csv2sys.make_banksys(config, asofdate, logger=logger)
     highholders: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
     if highholders is None:
-        # Include all RSSDs when HHs empty
+        # Include all RSSDs when HHs is None
         highholders: list[int] = sorted(list(DATA.highholders))
     logger.debug('Identified %s high-holders for %s', str(len(highholders)), str(asofdate))
 
