@@ -419,13 +419,12 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
     for idx,row in FAILdf.iterrows():
         failasof = FAILdf.loc[idx]['FAILDATE']
         failasof = failasof.year*10000 + failasof.month*100 + failasof.day
-        if (rcntasof != rcnt_qtrend(failasof)):
+        if rcntasof != rcnt_qtrend(failasof):
             rcntasof = rcnt_qtrend(failasof)
             sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pkl'
             sysfilepath = os.path.join(outdir, sysfilename)
-            f = open(sysfilepath, 'rb')
-            BankSys = pkl.load(f)
-            f.close()
+            with open(sysfilepath, 'rb') as f:
+                BankSys = pkl.load(f)
         cert = FAILdf.loc[idx]['CERT']
         rssd = cert2rssd[cert]
         NICdict = ATTdf.loc[rssd].to_dict()
@@ -470,18 +469,16 @@ def makeATTs(indir, file_attA, file_attB, file_attC, asofdate, filter_asof=False
 
 def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=None, logger=logging) -> NICData:
     DATA = None
-    datafilename = 'DATA_'+str(asofdate)+'.pkl'
+    datafilename = f"DATA_{asofdate}.pkl"
     datafilepath = os.path.join(outdir, datafilename)
     nonefiles = (indir is None or fA is None or fB is None or fC is None or fREL is None)
     if os.path.isfile(datafilepath):
-        f = open(datafilepath, 'rb')
-        DATA: NICData = pkl.load(f)
-        f.close()
+        with open(datafilepath, 'rb') as f:
+            DATA: NICData = pkl.load(f)
     elif not nonefiles:
         DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate, logger=logger)
-        f = open(datafilepath, 'wb')
-        pkl.dump(DATA, f)
-        f.close()
+        with open(datafilepath, 'wb') as f:
+            pkl.dump(DATA, f)
     return DATA
 
 

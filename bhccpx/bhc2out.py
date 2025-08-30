@@ -69,7 +69,7 @@ class Metrics(StrEnum):
 
 
 def extractBHC_cached(config: ConfigParser, asofdate: str, rssd: int, logger: Logger = logging) -> nx.DiGraph:
-    bhcfilename = 'NIC_'+str(rssd)+'_'+str(asofdate)+'.pkl'
+    bhcfilename = f"BHC_{rssd}_{asofdate}.pkl"
     bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
     if os.path.exists(bhcfilepath):
         with open(bhcfilepath, 'rb') as f:

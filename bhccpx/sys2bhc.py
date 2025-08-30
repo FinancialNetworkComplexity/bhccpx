@@ -153,7 +153,7 @@ def extractBHC(
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
             logger.warning("RSSD=%s has no legal name, skipping", rssd)
             return
-        bhcfilename = 'NIC_'+str(rssd)+'_'+str(asofdate)+'.pkl'
+        bhcfilename = f"BHC_{rssd}_{asofdate}.pkl"
         bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
         with open(bhcfilepath, 'wb') as f:
             pkl.dump(BHC, f)
@@ -179,12 +179,22 @@ def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd)
 
 
 def clear_cache(cachedir: str, asof_list):
-    """Deletes any DATA_* files in the cache corresponding to the dates in asof_list"""
-    for asofdate in asof_list:
-        sysfilename = 'DATA_'+str(asofdate)+'.pkl'
-        sysfilepath = os.path.join(cachedir, sysfilename)
-        if os.path.isfile(sysfilepath):
-            os.remove(sysfilepath)
+    """Deletes any BHC_* files in the cache corresponding to the dates in asof_list"""
+    asof_set = set(asof_list)
+    for filename in os.listdir(cachedir):
+        if not (filename.startswith("BHC_") and filename.endswith(".pkl")):
+            continue
+        parts = filename.split("_")
+        if len(parts) != 3:
+            continue
+        rssd = parts[1]
+        asofdate_with_ext = parts[2]
+        asofdate = asofdate_with_ext.replace(".pkl", "")
+        if asofdate not in asof_set:
+            continue
+        filepath = os.path.join(cachedir, filename)
+        if os.path.isfile(filepath):
+            os.remove(filepath)
 
 
 def extract_bhcs_ondate(config: ConfigParser, asofdate, logger=logging) -> list[nx.DiGraph | None]:
