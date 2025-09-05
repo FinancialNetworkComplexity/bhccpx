@@ -39,15 +39,34 @@ import csv2sys
 import logging
 
 
-def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
+def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph, logger=logging) -> nx.DiGraph:
     """
-    A function to decorate a BHC graph with certain important attibutes.
-    - DATA is a list of key information resources, as assembled by makeDATA()
-    - BHC is a naked (no attributes) NetworkX DiGraph object for the firm
+    Decorate a BHC graph with important attributes from NIC data.
+    For each entity in the BHC graph, we look up relevant attributes from the DATA object
+    and attach them to the node.
 
-    For each node in the BHC, a number of important attributes are looked up 
-    from the attributes dataframe (in the DATA object), and attached to the node. 
-    The decorated BHC graph is returned.
+    Default attributes added to each node include:
+    - nicsource: Source identifier from NIC data
+    - entity_type: Type of the business entity
+    - GEO_JURISD: Geographic jurisdiction (country and state)
+    
+    Additional attributes can be specified in the configuration file under
+    the 'extraattributes' setting in the 'sys2bhc' section.
+
+    :param config: Configuration parser containing settings including extra attributes to add
+    :type config: ConfigParser
+    :param DATA: NIC data container with attributes dataframe and other key information resources
+    :type DATA: NICData
+    :param BHC: Bare NetworkX directed graph representing the firm structure without attributes
+    :type BHC: nx.DiGraph
+    :param logger: Logger instance for debugging and info messages
+    :type logger: logging.Logger, optional
+    :returns: Enhanced NetworkX directed graph with node attributes added
+    :rtype: nx.DiGraph
+
+    .. warning::
+        If a node ID is not found in the attributes dataframe, default values
+        of 'XXX' are assigned to prevent errors.
     """
     ATTdf = DATA.attributes
     for node in BHC.nodes():
@@ -69,14 +88,25 @@ def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.D
                 'entity_type': 'XXX',
                 'GEO_JURISD': 'XXX'
             }
+            logger.warning('Node %s not found in attributes dataframe, assigning default attributes', node_id)
         nx.set_node_attributes(BHC, {node: node_dict})
     return BHC
 
 
 def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
     """
-    Copies BHC to a new DiGraph object that is identical to BHC, except
-    that it lacks any branches or subsidiaries of branches
+    Creates a copy of the input BHC DiGraph and removes all nodes that are identified
+    as branches (NICsource == 'B') along with all their descendant nodes in the 
+    directed acyclic graph structure.
+    
+    :param config: Configuration parser object (currently unused in function)
+    :type config: ConfigParser
+    :param DATA: NIC data object containing attributes dataframe with NICsource information
+    :type DATA: NICData
+    :param BHC: Bank holding company represented as a directed graph
+    :type BHC: nx.DiGraph
+    :returns: New directed graph identical to input BHC but without branch nodes and their descendants
+    :rtype: nx.DiGraph
     """
     removal_set = set()
     ATTdf = DATA.attributes
@@ -110,14 +140,30 @@ def extractBHC(
     logger=logging
 ) -> nx.DiGraph | None:
     """
-    A function to extract a single BHC graph from a full banking system 
-    graph, starting with the BHC's high-holder RSSD ID    
-    - config is a configuration module, containing pointers to key files, etc.
-    - asofdate is the point in (historical) time of the desired BHC snapshot
-    - rssd is the RSSD ID of a particular BHC high-holder to extract
+    This function extracts a single BHC graph from a full banking system
+    graph, as identified by the BHC's high-holder RSSD. It also decoreates the BHC
+    graph with various important attributes. Outputs are cached under "BHC_{rssd}_{asofdate}.pkl".
 
-    The function also decorates the BHC graph with a number of important 
-    attributes, by calling the add_attibutes().
+    :param config: Configuration information
+    :type config: ConfigParser
+    :param DATA: NIC data object containing attributes dataframe with NICsource information.
+        Will fetch/generate if not provided.
+    :type DATA: NICData
+    :param BankSys: Full banking system graph, optional. Will generate if not provided.
+    :type BankSys: nx.DiGraph or None, default None
+    :param logger: Logger instance for debugging and warnings
+    :type logger: logging.Logger, default logging
+    :returns: Extracted and decorated BHC graph, or None if extraction fails
+    :rtype: nx.DiGraph or None
+    
+    .. warning::
+        Configuration directory mismatches between csv2sys and sys2bhc sections
+        will generate warning messages but won't prevent execution.
+    .. warning::
+        If 'nm_lgl' is not present in the BHC nodes, it will be skipped.
+
+    The function also decorates the BHC graph with a number of important
+    attributes, by calling the add_attributes().
     """
     BHC = None
     if config.get('sys2bhc', 'indir') != config.get('csv2sys', 'indir'):
@@ -148,7 +194,7 @@ def extractBHC(
 
     highholders = DATA.highholders
     if rssd in highholders:
-        BHC = populate_bhc(config, BankSys, DATA, rssd)
+        BHC = populate_bhc(config, BankSys, DATA, rssd, logger)
         logger.debug('BHC: %s %s %s %s', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
             logger.warning("RSSD=%s has no legal name, skipping", rssd)
@@ -166,12 +212,36 @@ def extractBHC(
     return BHC
 
 
-def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd) -> nx.DiGraph:
+def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd, logger=logging) -> nx.DiGraph:
+    """
+    This function extract a BHC subgraph from a banking system graph, adds relevant attributes,
+    optionally removed branches, and returns a directed graph containing the BHC.
+
+    :param config: Configuration information
+    :type config: ConfigParser
+    :param BankSys: Directed graph representing the entire banking system structure
+    :type BankSys: nx.DiGraph
+    :param DATA: Data object containing banking information used for adding attributes
+    :type DATA: NICData
+    :param rssd: Root RSSD identifier of the holding company to extract
+    :type rssd: str or int
+    :param logger: Logger instance for recording processing information
+    :type logger: logging module, optional
+    :returns: Directed graph representing the BHC structure with all descendants of the
+              specified RSSD, including added attributes and optional branch removal
+    :rtype: nx.DiGraph
+
+    .. note::
+    - The function includes the root RSSD (holding company) itself in the BHC graph
+    - Branch removal is controlled by the 'usebranches' configuration setting
+    - The returned graph is always converted to a directed graph format
+    """
+
     usebranches = config.getboolean('sys2bhc', 'usebranches')
     bhc_entities = nx.algorithms.dag.descendants(BankSys, rssd)
-    bhc_entities.add(rssd)    # Include HH in the BHC too
+    bhc_entities.add(rssd)  # Include HH in the BHC too
     BHC = BankSys.subgraph(bhc_entities)
-    BHC = add_attributes(config, DATA, BHC)
+    BHC = add_attributes(config, DATA, BHC, logger)
     if not usebranches:
         BHC = remove_branches(config, DATA, BHC)
     BHC = BHC.to_directed()
