@@ -260,35 +260,29 @@ cntry_nms = [
 
 def BHC_simpleDAG(max_node_count=7):
     """Creates a BHC (a DiGraph object) with a simple directed tree structure.
+
+    :param max_node_count: The maximum number of nodes in the BHC (default is 7)
+    :type max_node_count: int
+    :return: The completed BHC graph
+    :rtype: networkx.DiGraph
     
-    Parameters
-    ----------
-    max_node_count : int
-        The maximum number of nodes in the BHC
-        
-    Returns
-    -------
-    BHC : nx.DiGraph
-        The completed BHC graph
-        
-    Examples
-    --------
+    .. Examples::
+
     The default parameter values create a tree with 7 nodes
     
-    >>> bhc7 = BHC_simpleDAG()
-    >>> bhc7.number_of_nodes()
-    7
-    >>> bhc7.number_of_edges()
-    6
+        >>> bhc7 = BHC_simpleDAG()
+        >>> bhc7.number_of_nodes()
+        7
+        >>> bhc7.number_of_edges()
+        6
     
     If we shrink the max_node_count by 1 (from 7 to 6) the tree is smaller
     
-    >>> bhc3 = BHC_simpleDAG(max_node_count=6)
-    >>> bhc3.number_of_nodes()
-    3
-    >>> bhc3.number_of_edges()
-    2
-    
+        >>> bhc3 = BHC_simpleDAG(max_node_count=6)
+        >>> bhc3.number_of_nodes()
+        3
+        >>> bhc3.number_of_edges()
+        2
     """
     depth = 0
     bfact = 2
@@ -303,29 +297,23 @@ def BHC_simpleDAG(max_node_count=7):
 
 def BHC_systemDAG(num_comps = 2, max_node_count=7):
     """Creates a banking system (a DiGraph object) with several simpleDAGs.
+
+    :param num_comps: The number of BHC components in the system
+    :type num_comps: int
+    :param max_node_count: The maximum number of nodes in a typical BHC component
+    :type max_node_count: int
+    :return: The completed system graph
+    :rtype: networkx.DiGraph
     
-    Parameters
-    ----------
-    num_comps : int, optional
-        The number of BHC components in the system
-    max_node_count : int, optional
-        The maximum number of nodes in a typical BHC component
-        
-    Returns
-    -------
-    nx.DiGraph
-        The completed system graph
-        
-    Examples
-    --------
+    .. Examples::
+
     The default parameter values create two trees with seven nodes each
     
-    >>> BankSys = BHC_systemDAG()
-    >>> nx.number_connected_components(BankSys.to_undirected())
-    2
-    >>> [len(c) for c in nx.connected_components(BankSys.to_undirected())]
-    [7, 7]
-    
+        >>> BankSys = BHC_systemDAG()
+        >>> nx.number_connected_components(BankSys.to_undirected())
+        2
+        >>> [len(c) for c in nx.connected_components(BankSys.to_undirected())]
+        [7, 7]
     """
     BankSys = nx.DiGraph()
     for n in range(num_comps):
@@ -340,37 +328,31 @@ def BHC_systemDAG(num_comps = 2, max_node_count=7):
 
 def BHC_simpleDAG_plusreverseedge(max_node_count=7, reverse_edges=1):
     """Create a BHC as a DAG, except some edges have matching reverse edges
+
+    :param max_node_count: The number of nodes in the BHC (default is 7)
+    :type max_node_count: int
+    :param reverse_edges: The number of reverse edges to add (default is 1)
+    :type reverse_edges: int
+    :return: The completed BHC graph
+    :rtype: networkx.DiGraph
     
-    Parameters
-    ----------
-    node_count
-        The number of nodes in the BHC
-    reverse_edges
-        The number of reverse_edges to add
-        
-    Returns
-    -------
-    nx.DiGraph
-        The completed BHC graph
-        
-    Examples
-    --------
+    .. Examples::
+
     The default creates a tree with 7 nodes, and one extra (reverse) edge
     
-    >>> bhc71 = BHC_simpleDAG_plusreverseedge()
-    >>> bhc71.number_of_nodes()
-    7
-    >>> bhc71.number_of_edges()
-    7
+        >>> bhc71 = BHC_simpleDAG_plusreverseedge()
+        >>> bhc71.number_of_nodes()
+        7
+        >>> bhc71.number_of_edges()
+        7
     
     If we increase the reverse_edges (from 1 to 3) edge count goes up
     
-    >>> bhc73 = BHC_simpleDAG_plusreverseedge(reverse_edges=3)
-    >>> bhc73.number_of_nodes()
-    7
-    >>> bhc73.number_of_edges()
-    9
-    
+        >>> bhc73 = BHC_simpleDAG_plusreverseedge(reverse_edges=3)
+        >>> bhc73.number_of_nodes()
+        7
+        >>> bhc73.number_of_edges()
+        9
     """
     BHC = BHC_simpleDAG(max_node_count)
     edges_unreversed = list(BHC.edges)
@@ -400,41 +382,35 @@ def BHC_attribDAG(max_node_count=7, ent_labels=None, geo_labels=None):
         * Last node has jurisdiction 'GERMANY'
         * Every (other) fifth node has jurisdiction 'UNITED STATES - CA'
         * Every other node has jurisdiction 'UNITED STATES - NC'
-    
-    Parameters
-    ----------
-    max_node_count : int
-        The number of nodes in the BHC
-    ent_labels : dict
-        A mapping of entity type codes, keyed by node number
-    geo_labels : dict
-        A mapping of geographic jurisdiction codes, keyed by node number
-        
-    Returns
-    -------
-    BHC : nx.DiGraph
-        The completed BHC graph, with entity and geography labels
 
-    Examples
-    --------
+    :param max_node_count: The number of nodes in the BHC (default is 7)
+    :type max_node_count: int
+    :param ent_labels: A mapping of entity type codes, keyed by node number
+    :type ent_labels: dict, optional
+    :param geo_labels: A mapping of geographic jurisdiction codes, keyed by node number
+    :type geo_labels: dict, optional
+    :return: The completed BHC graph, with entity and geography labels
+    :rtype: networkx.DiGraph
+    
+    .. Examples::
+
     The default creates a tree with 7 nodes, where the root node is a BHC in NY
     
-    >>> bhc = TEST.BHC_attribDAG()
-    >>> bhc.nodes(data=True)[0]
-    {'entity_type': 'BHC', 'GEO_JURISD': 'UNITED STATES - NY'}
-    >>> bhc.nodes(data=True)[1]
-    {'entity_type': 'SMB', 'GEO_JURISD': 'UNITED STATES - NC'}
-    >>> bhc.nodes(data=True)[2]
-    {'entity_type': 'SMB', 'GEO_JURISD': 'UNITED STATES - NC'}
-    >>> bhc.nodes(data=True)[3]
-    {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - NC'}
-    >>> bhc.nodes(data=True)[4]
-    {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - NC'}
-    >>> bhc.nodes(data=True)[5]
-    {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - CA'}
-    >>> bhc.nodes(data=True)[6]
-    {'entity_type': 'DEO', 'GEO_JURISD': 'GERMANY'}
-    
+        >>> bhc = TEST.BHC_attribDAG()
+        >>> bhc.nodes(data=True)[0]
+        {'entity_type': 'BHC', 'GEO_JURISD': 'UNITED STATES - NY'}
+        >>> bhc.nodes(data=True)[1]
+        {'entity_type': 'SMB', 'GEO_JURISD': 'UNITED STATES - NC'}
+        >>> bhc.nodes(data=True)[2]
+        {'entity_type': 'SMB', 'GEO_JURISD': 'UNITED STATES - NC'}
+        >>> bhc.nodes(data=True)[3]
+        {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - NC'}
+        >>> bhc.nodes(data=True)[4]
+        {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - NC'}
+        >>> bhc.nodes(data=True)[5]
+        {'entity_type': 'DEO', 'GEO_JURISD': 'UNITED STATES - CA'}
+        >>> bhc.nodes(data=True)[6]
+        {'entity_type': 'DEO', 'GEO_JURISD': 'GERMANY'}
     """
     BHC = BHC_simpleDAG(max_node_count)
     if (None==ent_labels):
