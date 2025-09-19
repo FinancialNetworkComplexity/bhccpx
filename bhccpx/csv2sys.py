@@ -40,18 +40,28 @@ import logging
 
 def clear_cache(cachedir, YQ0, YQ1):
     """
-    Deletes any files in the cache corresponding to the range of dates implied by YQ0 and YQ1
+    This function removes cached pickle files from the specified cache directory
+    that correspond to dates within the range defined by YQ0 and YQ1. The files
+    follow the naming convention 'NIC__YYYYMMDD.pkl'.
+
+    :param cachedir: Path to the directory containing cached files
+    :type cachedir: str
+    :param YQ0: Start date for the range of files to clear
+    :type YQ0: str or date-like
+    :param YQ1: End date for the range of files to clear
+    :type YQ1: str or date-like
     """
     asof_list = bhc_datautil.assemble_asofs(YQ0, YQ1)
     for asofdate in asof_list:
-        sysfilename = 'NIC_'+'_'+str(asofdate)+'.pkl'
+        sysfilename = f"NIC__{asofdate}.pkl"
         sysfilepath = os.path.join(cachedir, sysfilename)
         if os.path.isfile(sysfilepath):
             os.remove(sysfilepath)
             
 
 def find_highholder(config, BankSys, rssd, logger=logging):
-    """Finds an entity's high-holder within a banking system 
+    """
+    Finds an entity's high-holder within a banking system.
     
     Examines a directed graph representing the full banking system to find 
     the high-holder for a given starting node (identified by rssd).
@@ -67,18 +77,13 @@ def find_highholder(config, BankSys, rssd, logger=logging):
     high-holders, for example, if there is a joint venture that bridges 
     two (or more) BHCs. This situation does occasionally occur in practice.
     
-    Parameters
-    ----------
-    BankSys : networkx.DiGraph
-        A directed graph representing ownerships in a banking system
-    rssd : int
-        Entity whose high holder we seek within the banking system
-     
-    Returns
-    -------
-    int
-        Identifier of the high-holder entity (or first in the list, if 
-        multiple high holders are found)
+    :param BankSys: A directed graph representing ownerships in a banking system
+    :type BankSys: networkx.DiGraph
+    :param rssd: Entity whose high holder we seek within the banking system
+    :type rssd: int
+    :returns: Identifier of the high-holder entity (or first in the list, if 
+              multiple high holders are found)
+    :rtype: int
     """
     HH_list = bhca.find_highholders(BankSys, rssd)
     if HH_list[0] is None:
@@ -92,18 +97,25 @@ def find_highholder(config, BankSys, rssd, logger=logging):
            
 def make_banksys(config: ConfigParser, asofdate, logger=logging):
     """
-    A function to read or create a NetworkX graph of the full banking system
-    on a given date. The function looks for an existing graph in a pickle file
-    located at sysfilepath (for example, .../cachedir/NIC__YYYYMMDD.pkl),
-    where YYYYMMDD is the asofdate. 
+    Read or create a NetworkX graph of a full banking system on a given date.
+    If a pickle file for this banking system exists, it will load and return it.
+    If not, it will use the relationship data to create a naked directed graph whose
+    nodes are NIC entities and whose edges point from parents to offspring, based on the
+    relationship data available. This directed graph will be saved for future use.
 
-    If this file exists, it is unpackeded from the pickle and returned.
-    If the file does not (yet) exist, the NetworkX DiGraph is instead created
-    from the relationships data and dumped into a new pickle at sysfilepath.
+    :param config: Configuration parser containing file paths and settings
+    :type config: ConfigParser
+    :param asofdate: Date for which to build/load the banking system (YYYYMMDD format)
+    :type asofdate: int or str
+    :param logger: Logger instance for debugging and info messages
+    :type logger: logging.Logger, optional
+    :returns: Directed graph representing the banking system hierarchy
+    :rtype: networkx.DiGraph
+    :raises: FileNotFoundError if required CSV files are not found
+    :raises: KeyError if required configuration keys are missing
 
-    The graph is a naked directed graph whose nodes are NIC entities and 
-    whose edges point from parent nodes to offspring nodes. 
-    The function then returns this digraph (either newly created or unpickled). 
+    .. note::
+        The function creates pickle files in the format 'NIC__YYYYMMDD.pkl' for caching.
     """
     sysfilename = 'NIC_'+'_'+str(asofdate)+'.pkl'
     sysfilepath = os.path.join(config.get('csv2sys', 'outdir'), sysfilename)
@@ -160,10 +172,29 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
     
 
 def build_sys(config: ConfigParser, logger=logging):
-    """Builds a representation of the full system"""
+    """
+    Builds a representation of the full banking system for specified dates.
+    Processing can be done either sequentially or in parallel.
+    
+    :param config: Configuration parser containing processing parameters. The 'csv2sys' section should contain:
+                   
+                   - clearcache (bool): Whether to clear existing *.pkl cache files
+                   - asofdate0 (str): Start date for processing range
+                   - asofdate1 (str): End date for processing range  
+                   - outdir (str): Output directory path for generated files
+                   - parallel (int): Number of parallel processes (0 for sequential)
+    :type config: ConfigParser
+    :param logger: Logger instance for recording processing information and debug messages
+    :type logger: logging.Logger, optional
+    
+    .. note::
+        - Sequential processing shows a progress bar for visual feedback
+        - Parallel process count is limited by CPU cores and number of dates to process
+        - Cache clearing removes NIC__YYYYMMDD.pkl files within the specified date range
+    """
     if config.getboolean('csv2sys', 'clearcache'):
         # Remove existing banking system pkl files and recreate
-        logger.info('Clearing output cache of *.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+        logger.info('Clearing output cache of NIC__YYYYMMDD.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
         clear_cache(config.get('csv2sys', 'outdir'), config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     
     asof_list = bhc_datautil.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))

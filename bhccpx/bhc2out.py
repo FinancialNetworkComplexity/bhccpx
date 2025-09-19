@@ -88,20 +88,15 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigP
     measures for the Wachovia-Wells Fargo case study. This appears as Table 2
     in the NBER version of the paper.
 
-    Parameters
-    ----------
-    BHCconfigs : list[tuple[int, int]]
-        A list of (rssd, asofdate) tuples to be processed
-    config : ConfigParser
-        Configuration object containing settings for the BHC Complexity Toolkit
-    logger : Logger, optional
-        Logger object for logging messages, by default logging
-    
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame containing the complexity metrics for Wachovia and Wells Fargo
-        at specified as-of dates.
+    :param BHCconfigs: A list of (rssd, asofdate) tuples to be processed
+    :type BHCconfigs: list[tuple[int, int]]
+    :param config: Configuration object containing settings for the BHC Complexity Toolkit
+    :type config: ConfigParser
+    :param logger: Logger object for logging messages, by default logging
+    :type logger: Logger, optional
+    :return: A DataFrame containing the complexity metrics for Wachovia and Wells Fargo
+             at specified as-of dates.
+    :rtype: pd.DataFrame
     """
     # Loop to extract all of BHC snapshots defined by BHCconfigs
     bar = None
@@ -172,15 +167,12 @@ def complexity_workup(BHC) -> dict[str, int]:
       * Geo_DjHom_M = 'Geo_DjHom_M'
       * Geo_Nlabl = 'Geo_Nlabl'
 
-    Parameters
-    ----------
-    BHC : networkx.DiGraph
-        A directed graph representing a bank holding company
-    
-    Returns
-    -------
-    int
-        Components in the projection of BHC to a simple undirected graph
+    :param BHC: A directed graph representing a bank holding company
+    :type BHC: networkx.DiGraph
+    :param logger: Logger object for logging messages, by default logging
+    :type logger: Logger, optional
+    :return: Components in the projection of BHC to a simple undirected graph
+    :rtype: dict[str, int]
     """
 
     metrics = dict()

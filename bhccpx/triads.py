@@ -4,8 +4,8 @@ import itertools
 
 SPARSE_TRIADS = ('003', '012', '102')
 
-# Examine BHC and return a dict of all the triads it contains
 def find_all_triads(BHC):
+    """Examine BHC and return a dict of all the triads it contains"""
     triads = dict()
     for v in sorted(BHC):
         vnbrs = set(BHC.pred[v]) | set(BHC.succ[v])
@@ -17,8 +17,8 @@ def find_all_triads(BHC):
                 triads[tkey] = tuple([triad, tcode])
     return triads
 
-# Returns a single long variable that encodes the identity of a triad
 def triad_key(rssdA, rssdB, rssdC):
+    """Returns a single long variable that encodes the identity of a triad"""
     triad = tuple(sorted((rssdA, rssdB, rssdC)))
     tkey = triad[0]*10000000*10000000 + triad[1]*10000000 + triad[2]
     return tkey, triad
