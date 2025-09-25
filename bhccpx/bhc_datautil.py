@@ -116,8 +116,8 @@ class Usage(Exception):
 
 
 
-# Reads the application configuration from the BHCCPX.ini file
 def read_config(config_file='BHCCPX.ini'):
+    """Reads the application configuration from the BHCCPX.ini file"""
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
     # It is safe to configure logging repeatedly; extra calls get ignored
@@ -128,9 +128,13 @@ def read_config(config_file='BHCCPX.ini'):
     logcfg.fileConfig(config_file)
     return config
 
-# Simple formatted dump of the config parameters relevant for a given 
-# configuration section. Useful for debugging.
+
+
 def print_config(config, modulefile):
+    """
+    Simple formatted dump of the config parameters relevant for a given
+    configuration section. Useful for debugging.
+    """
     section = os.path.splitext(os.path.basename(modulefile))[0]
     print('-------------------------- CONFIG ----------------------------')
     print('Current working directory:', os.getcwd())
@@ -146,23 +150,27 @@ def print_config(config, modulefile):
 
 
 
-
-# This function takes an (open) CSV file and an asofdate as inputs:
-#  -- csvfile should be an open, readable pointer to a tab-delimited CSV 
-#     file that contains the information from a NIC attributes download
-#  -- asofdate is an integer value of the form YYYYMMDD
-#  -- nicsource is a single character that indicating the nature of the node:
-#        -- 'A' indicates an "active" or going-concern node
-#        -- 'B' indicates a "branch" of an active node; not a distinct entity
-#        -- 'C' indicates a "closed" or "inactive" node
-# Note that NIC downloads start in XML format; you must convert this from
-# XML to tab-delimited CSV before using this function.
-# The contents of the CSV file are converted to appropriate primitive types
-# and stored in a Pandas dataframe, which is returned. 
-# The returned dataframe is indexed on one field: ID_RSSD.
-# In addition, this function adds a 'NICsource' column (not in the source CSV) 
-# to the dataframe, which indicates the nature (A/B/C) of the NIC source.
 def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
+    """
+    Converts a tab-delimited CSV file containing NIC attributes data into a Pandas DataFrame.
+    The DataFrame is indexed on the ID_RSSD column, and includes an additional
+    'NICsource' column indicating the nature of the node ('A', 'B', or 'C').
+
+    :param csvfile: An open, readable pointer to a tab-delimited CSV file that
+    contains the information from a NIC attributes download
+    :type csvfile: TextIOWrapper
+    :param asofdate: An integer value of the form YYYYMMDD
+    :type asofdate: int
+    :param nicsource: A single character indicating the nature of the node.
+        'A' indicates an "active" or going-concern node.
+        'B' indicates a "branch" of an active node; not a distinct entity.
+        'C' indicates a "closed" or "inactive" node.
+    :type nicsource: str
+    :param filter_asof: If True, filter records based on asofdate, by default False
+    :type filter_asof: bool, optional
+    :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
+    :rtype: pd.DataFrame
+    """
     DTYPES_ATT = {
         'ACT_PRIM_CD': object, 
         'AUTH_REG_DIST_FRS': np.int8, 
@@ -251,19 +259,23 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
     return ATTdf
 
 
-# This function takes an (open) csvfile and an asofdate as inputs
-#  -- csvfile should be an open, readable pointer to a tab-delimited CSV 
-#     file that contains the information from a NIC relationships download
-#  -- asofdate is an integer value of the form YYYYMMDD
-# NIC downloads typically start in XML format; you must convert this from
-# XML to tab-delimited CSV before using this function
-# The contents of the CSV file are converted to appropriate primitive types
-# and stored in a Pandas dataframe, which RELcsv2df returns. 
-# The returned dataframe is indexed (and sorted) on four fields:
-#     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, and DT_END
-# There is a separate function, REL_IDcols(), for identifying the column 
-# numbers associated with each of these four index columns.        
+      
 def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
+    """
+    Converts a tab-delimited CSV file containing NIC relationship data into a Pandas DataFrame.
+    The DataFrame is indexed on the composite key (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END).
+    There is a separate function, REL_IDcols(), for identifying the column
+    numbers associated with each of these four index columns.
+
+    :param csvfile: An open, readable pointer to a tab-delimited CSV file.
+    :type csvfile: TextIOWrapper
+    :param asofdate: An integer value of the form YYYYMMDD.
+    :type asofdate: int
+    :param filter_asof: If True, filter records based on asofdate, by default False
+    :type filter_asof: bool, optional
+    :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
+    :rtype: pd.DataFrame
+    """
     DTYPES_REL = {
         'CTRL_IND': np.int8, 
         'DT_RELN_EST': object, 
@@ -299,11 +311,12 @@ def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
     return RELdf
     
 
-# A convenience function to look up and return the column number for the 
-# four columns composing the index in the relationships dataframe. 
-# See the function RELcsv2df for further details. 
 def REL_IDcols(RELdf: pd.DataFrame) -> tuple[int, int, int, int]:
-    # Get the column numbers to dereference the values packed in the multiindex
+    """
+    A convenience function to look up and return the column number for the
+    four columns composing the index in the relationships dataframe.
+    See the function RELcsv2df for further details.
+    """
     ID_RSSD_PARENT = RELdf.index.names.index('ID_RSSD_PARENT')
     ID_RSSD_OFFSPRING = RELdf.index.names.index('ID_RSSD_OFFSPRING')
     DT_START = RELdf.index.names.index('DT_START')
@@ -351,8 +364,7 @@ def maps_rssd_cert(DATA: NICData):
 
 
 def stringify_qtrend(asofdate: int) -> int:
-    """Converts an as-of date to a YYYYQQ string for the next quarter end
-    """
+    """Converts an as-of date to a YYYYQQ string for the next quarter end"""
     yyyy = int(asofdate/10000)
     mmdd = asofdate -yyyy*10000
     if (930 < mmdd):
@@ -367,8 +379,7 @@ def stringify_qtrend(asofdate: int) -> int:
         
     
 def next_qtrend(asofdate: int) -> int:
-    """Constructs the next quarter-end date for a given as-of date
-    """
+    """Constructs the next quarter-end date for a given as-of date"""
     yyyy = int(asofdate/10000)
     mmdd = asofdate -yyyy*10000
     if (1231 == mmdd):
@@ -385,8 +396,7 @@ def next_qtrend(asofdate: int) -> int:
 
     
 def rcnt_qtrend(asofdate: int) -> int:
-    """Constructs the next quarter-end date for a given as-of date
-    """
+    """Constructs the next quarter-end date for a given as-of date"""
     yyyy = int(asofdate/10000)
     mmdd = asofdate -yyyy*10000
     if (1231 == mmdd):
@@ -440,8 +450,8 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
     return FAILdf2
 
 
-# A function to assemble the NIC data for given asofdate into a single object.
 def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate, logger=logging) -> NICData:
+    """A function to assemble the NIC data for given asofdate into a single object."""
     ATTdf = makeATTs(indir, file_attA, file_attB, file_attC, asofdate)
     csvfilepathR = os.path.join(indir, file_rel)
     RELdf = RELcsv2df(csvfilepathR, asofdate)
@@ -526,13 +536,15 @@ def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=Non
 #    return BankSys
 
 
-# The input here is a string of form YYYYQQ, for example, '1995Q3'
-# The function splits this and returns a tuple:
-#    yyyymmdd:  An int variable indicating year/mo/day, 19950930
-#    y:         An int variable indicating the year, 1995
-#    q:         An int variable indicating the quarter, 3
-#    Q:         A string variable indicating the quarter, 'Q3'
+
 def make_asof(YYYYQQ: str) -> tuple[int, int, int, str]:
+    """
+    Parses the string YYYYQQ (e.g., "1986Q2") into an asofdate tuple:
+        yyyymmdd:  An int variable indicating year/mo/day, 19860630
+        y:         An int variable indicating the year, 1986
+        q:         An int variable indicating the quarter, 2
+        Q:         A string variable indicating the quarter, 'Q2'
+    """
     MMDDs = [331, 630, 930, 1231]
     y = int(YYYYQQ[0:4])
     q = int(YYYYQQ[5:6])
@@ -541,11 +553,14 @@ def make_asof(YYYYQQ: str) -> tuple[int, int, int, str]:
     return yyyymmdd, y, q, Q
  
 
-# Parses the strings Q0 and Q1, each of the form YYYYQQ (e.g., "1986Q2") into
-# asofdate variables (of type int), each of the form YYYYMMDD (e.g., 19860630). 
-# Every quarter-end asofdate between Q0 and Q1 (inclusive) is added to 
-# the asofs list, which is returned. 
+
 def assemble_asofs(YQ0, YQ1):
+    """
+    Parses the strings YQ0 and YQ1, each of the form YYYYQQ (e.g., "1986Q2") into
+    asofdate variables (of type int), each of the form YYYYMMDD (e.g., 19860630).
+    Every quarter-end asofdate between YQ0 and YQ1 (inclusive) is added to
+    the asofs list, which is returned.
+    """
     asofs = []
     yyyymmdd0, Y0, q0, Q0 =  make_asof(YQ0)
     yyyymmdd1, Y1, q1, Q1 = make_asof(YQ1)
@@ -569,19 +584,29 @@ def assemble_asofs(YQ0, YQ1):
     return asofs
 
 
-# A function to walk through the rows of the relationships dataframe, 
-# creating four key derived objects:
-#  -- entities is the set of all NIC nodes appearing the relationships, 
-#     either as parents or offspring
-#  -- parents is a dictionary, keyed by individual node_ids, of the 
-#     set of immediate parents of each node
-#  -- offspring is a dictionary, keyed by individual node_ids, of the 
-#     set of immediate offspring of each node
-#  -- high_holders is the set of all high-holder entities, defined as any 
-#     node with no immediate parent 
-# Note that a high-holder node will have an entry in the parents dict, but
-# this entry will point to an empty set (high holders have no parents)
+
 def NIC_highholders(RELdf, asofdate, logger=logging) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]:
+    """
+    A function to walk through the rows of the relationships dataframe,
+    creating four key derived objects:
+        * entities is the set of all NIC nodes appearing the relationships, 
+            either as parents or offspring
+        * parents is a dictionary, keyed by individual node_ids, of the 
+            set of immediate parents of each node
+        * offspring is a dictionary, keyed by individual node_ids, of the 
+            set of immediate offspring of each node
+        * high_holders is the set of all high-holder entities, defined as any
+          node with no immediate parent
+    Note that a high-holder node will have an entry in the parents dict, but
+    this entry will point to an empty set (high holders have no parents)
+
+    :param RELdf: The relationships dataframe
+    :type RELdf: pd.DataFrame
+    :param asofdate: The as-of date for which the relationships are valid
+    :type asofdate: int
+    :return: A tuple containing (high_holders, entities, parents, offspring)
+    :rtype: tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]
+    """
     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
     # Create some containers for derived structures
     parents = {}     # Dictionary of immediate parents (a set) for each node

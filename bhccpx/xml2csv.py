@@ -166,9 +166,8 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
         logger.error('Did not find </DATA> end tag in XML file: %s', xmlfilepath)
 
 
-# This default invocation parses all five *.xml files, as
-# indentified in the configuration object
 def parse_nic(config, logger=logging):
+    """Parses all five NIC XML files as specified in the config object."""
     xml_input_files = [
         config.get('xml2csv', 'attributesactive'),
         config.get('xml2csv', 'attributesbranch'),
@@ -181,13 +180,12 @@ def parse_nic(config, logger=logging):
         logger.info('xml2csv conversion for file %s complete', xfile)
 
 
-# The main function controls execution when running from the command line
 def main(argv=None):
     config = bhc_datautil.read_config()
     config = bhc_datautil.parse_command_line(argv, config, __file__)
     logger = logging.getLogger("xml2csv")
     parse_nic(config, logger)
-    
-# This tests whether the module is being run from the command line
+
+
 if __name__ == "__main__":
     main()
