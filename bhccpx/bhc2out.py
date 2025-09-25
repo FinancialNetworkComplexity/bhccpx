@@ -290,29 +290,30 @@ def makeSVG(config: ConfigParser, BHC: nx.DiGraph, outdir, rssd_hh, asofdate: st
     dot.attr('node', fixedsize='true')
     dot.attr('node', width='0.7')
     dot.attr('node', height='0.3')
-    for N in BHC.nodes():
+    BHC_allnodes = BHC.nodes(data=True)
+    for N in BHC_allnodes:
         NM_LGL = ''
         ENTITY_TYPE = 'ZZZ'
         GEO_JURISD = 'ZZZ'
         attribute_error = True
         try:
-            NM_LGL = BHC.node[N]['nm_lgl'].strip()
-            ENTITY_TYPE = BHC.node[N]['entity_type']
-            GEO_JURISD = BHC.node[N]['GEO_JURISD']
+            NM_LGL = N[1]['nm_lgl'].strip()
+            ENTITY_TYPE = N[1]['entity_type']
+            GEO_JURISD = N[1]['GEO_JURISD']
             attribute_error = False
         except KeyError as KE:
             logger.warning('Invalid attribute data for RSSD=%s at asofdate=%s', str(N), str(asofdate))
-        tt = '['+str(N)+']'+' '+ENTITY_TYPE+'\\n' +'------------\\n'+ NM_LGL +'\\n' +'------------\\n'+ GEO_JURISD
+        tt = '['+str(N[0])+']'+' '+ENTITY_TYPE+'\\n' +'------------\\n'+ NM_LGL +'\\n' +'------------\\n'+ GEO_JURISD
         if (attribute_error):
-            dot.node('rssd'+str(N), str(N), style="filled", fillcolor="red;.5:green", tooltip=tt)
+            dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor="red;.5:green", tooltip=tt)
         else:
             fc = colormap[ENTITY_TYPE]
-            dot.node('rssd'+str(N), str(N), style="filled", fillcolor=fc, tooltip=tt)
+            dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor=fc, tooltip=tt)
     for E in BHC.edges():
         src = 'rssd' + str(E[0])
         tgt = 'rssd' + str(E[1])
-        Vs = BHC.node[E[0]]
-        Vt = BHC.node[E[1]]
+        Vs = BHC.nodes[E[0]]
+        Vt = BHC.nodes[E[1]]
         col = 'red'
         if ('entity_type' not in Vs) or ('entity_type'not in Vt):
             col='green'
