@@ -243,6 +243,7 @@ def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd,
     BHC = BankSys.subgraph(bhc_entities)
     BHC = add_attributes(config, DATA, BHC, logger)
     if not usebranches:
+        logger.info(f"Removing branches ({usebranches=}) for high-holder: {rssd}")
         BHC = remove_branches(config, DATA, BHC)
     BHC = BHC.to_directed()
     return BHC

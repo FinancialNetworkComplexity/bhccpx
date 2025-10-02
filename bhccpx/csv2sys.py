@@ -132,6 +132,7 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
         BankSys = nx.DiGraph()
         csvfilepath = os.path.join(config.get('csv2sys', 'indir'), config.get('csv2sys', 'relationships'))
         logger.debug('CSV file path: %s %s', csvfilepath, asofdate)
+        print(f"CSV file path: {csvfilepath}, {asofdate}")
 
         RELdf = bhc_datautil.RELcsv2df(csvfilepath, asofdate)
         ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = bhc_datautil.REL_IDcols(RELdf)

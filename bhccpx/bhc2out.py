@@ -266,7 +266,7 @@ def test_metrics(metrics: dict[str, int], context: str, logger: Logger = logging
             Metrics.BCrk, metrics[Metrics.BCrk], Metrics.GDHmB, metrics[Metrics.GDHmB], context
         )
         
-def makeSVG(config: ConfigParser, BHC: nx.DiGraph, outdir, rssd_hh, asofdate: str, popup=False, logger: Logger = logging):
+def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate:str, partition:str='entity_type', popup=False, logger:Logger=logging):
     """
     Create an SVG image file representing a BHC.
     The file is stored in the outdir, with the filename: RSSD_<rssd_hh>_<asofdate>.svg.
@@ -299,18 +299,20 @@ def makeSVG(config: ConfigParser, BHC: nx.DiGraph, outdir, rssd_hh, asofdate: st
         if (attribute_error):
             dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor="red;.5:green", tooltip=tt)
         else:
-            fc = colormap[ENTITY_TYPE]
-            dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor=fc, tooltip=tt)
+            dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor=colormap[ENTITY_TYPE], tooltip=tt)
     for E in BHC.edges():
+        col_het = config.get('bhc2out', 'col_het')
+        col_hom = config.get('bhc2out', 'col_hom')
+        col_nul = config.get('bhc2out', 'col_nul')
         src = 'rssd' + str(E[0])
         tgt = 'rssd' + str(E[1])
         Vs = BHC.nodes[E[0]]
         Vt = BHC.nodes[E[1]]
-        col = 'red'
-        if ('entity_type' not in Vs) or ('entity_type'not in Vt):
-            col='green'
-        elif Vs['entity_type'] == Vt['entity_type']:
-            col='black'
+        col = col_het  # Assume heterogeneous by default
+        if (partition not in Vs) or (partition not in Vt):
+            col=col_nul
+        elif Vs[partition] == Vt[partition]:
+            col=col_hom
         dot.edge(src, tgt, arrowsize='0.3', color=col)
     dot.render(filename=svg_file, format='svg')
     dot.save(filename=svg_file+'.dot', directory=outdir)
