@@ -59,7 +59,11 @@ def clear_cache(cachedir, YQ0, YQ1):
             os.remove(sysfilepath)
             
 
-def find_highholder(config, BankSys, rssd, logger=logging):
+def find_highholders(
+    config: ConfigParser, BankSys: nx.DiGraph,
+    rssd: int | None, hc_types: list[str] | None = None,
+    logger=logging
+) -> list[int]:
     """
     Finds an entity's high-holder within a banking system.
     
@@ -70,9 +74,7 @@ def find_highholder(config, BankSys, rssd, logger=logging):
     unique among all ancestors of rssd (including rssd itself).
     
     It is theoretically possible for a directed graph to have no parent-less
-    nodes (a cycle, for example), in which case None is returned, but this 
-    should never occur in practice for BHCs. 
-    
+    nodes (a cycle, for example), but this should never occur in practice for BHCs.
     On the other hand, it is also possible for a node to have multiple 
     high-holders, for example, if there is a joint venture that bridges 
     two (or more) BHCs. This situation does occasionally occur in practice.
@@ -84,15 +86,51 @@ def find_highholder(config, BankSys, rssd, logger=logging):
     :returns: Identifier of the high-holder entity (or first in the list, if 
               multiple high holders are found)
     :rtype: int
+
+    .. Examples::
+
+    The examples work with a simple banking system containing two BHCs, 
+    each organized as a simple DAG tree containing seven nodes: 
+        
+      * BHC tree rooted at node 0 and containing nodes 0-6
+      * BHC tree rooted at node 7 and containing nodes 7-13
+     
+        >>> import bhc_testutil as TEST
+        >>> BankSys = TEST.BHC_systemDAG()
+
+    Find the high-holder for a node in the first tree
+    
+        >>> find_highholders(BankSys, 3)
+        [0]
+
+    Find the high-holder for a node in the second tree
+    
+        >>> find_highholders(BankSys, 13)
+        [7]
     """
-    HH_list = bhca.find_highholders(BankSys, rssd)
-    if HH_list[0] is None:
-        logger.warning('Entity not in the banking system: %s', str(rssd))
-    elif len(HH_list) > 1:
-        logger.warning('Multiple high-holders: %s %s', str(rssd), str(HH_list))
-    elif len(HH_list) < 1:
-        logger.warning('No high-holders: %s', str(rssd))
-    return HH_list[0]
+    if rssd is None:
+        raw_HHs = [node for node, indeg in BankSys.in_degree() if indeg == 0]
+    else:
+        if rssd in BankSys:
+            raw_HHs: list[int] = [
+                node for node in nx.ancestors(BankSys, rssd) | {rssd}
+                if len(list(BankSys.predecessors(node))) == 0
+            ]
+        else:
+            logger.warning('Cannot find %s in BankSys', str(rssd))
+            return []
+    
+    if hc_types is None:
+        HHs = raw_HHs
+        if HHs[0] is None:
+            logger.warning('Entity not in the banking system: %s', str(rssd))
+        elif len(HHs) > 1:
+            logger.warning('Multiple high-holders: %s %s', str(rssd), str(HHs))
+        elif len(HHs) < 1:
+            logger.warning('No high-holders: %s', str(rssd))
+    else:
+        HHs = [node for node in raw_HHs if BankSys.nodes[node].get('entity_type') in hc_types]
+    return HHs
 
            
 def make_banksys(config: ConfigParser, asofdate, logger=logging):

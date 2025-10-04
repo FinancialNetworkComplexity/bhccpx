@@ -373,6 +373,7 @@ def cycle_rank(BHC: nx.DiGraph):
     rv = BHCu.number_of_edges() - BHCu.number_of_nodes() + b0
     return rv
 
+
 def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
     """
     Calculate the aggregate weight of a Bank Holding Company (BHC) network.
@@ -397,68 +398,8 @@ def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
             pass
     return rv
 
-
-
-def find_highholders(BankSys: nx.DiGraph, rssd: int, logger=logging):
-    """Scans a banking system to find all high holders for a given entity.
-    
-    The banking system (BankSys) object is a directed graph, with edge
-    orientations defined by ownership/control relationships of the NIC. 
-    Starting from a given entity (rssd), this function examines the 
-    banking system to find all entities that:
-        
-      * are ancestors of rssd (including possibly rssd itself), and
-      * have no immediate parents themselves. 
-     
-    In other words, the high-holder list contains any nodes in the 
-    hierarchy that are "upstream" of rssd, and have no parents. It is
-    possible for rssd to be its own high-holder, including the case where
-    it is a free-standing institution that participates in no 
-    ownership/control relationships.
-
-    :param BankSys: A directed graph representing the banking system at a point in time
-    :type BankSys: networkx.DiGraph
-    :param rssd: Identifier indicating a specific legal entity node in BankSys
-    :type rssd: int
-    :returns: A list of the high holders of rssd in BankSys
-    :rtype: list
-    
-    .. Examples::
-
-    The examples work with a simple banking system containing two BHCs, 
-    each organized as a simple DAG tree containing seven nodes: 
-        
-      * BHC tree rooted at node 0 and containing nodes 0-6
-      * BHC tree rooted at node 7 and containing nodes 7-13
-     
-        >>> import bhc_testutil as TEST
-        >>> BankSys = TEST.BHC_systemDAG()
-
-    Find the high-holder for a node in the first tree
-    
-        >>> find_highholders(BankSys, 3)
-        [0]
-
-    Find the high-holder for a node in the second tree
-    
-        >>> find_highholders(BankSys, 13)
-        [7]
-    """
-    HHs = []
-    if rssd in BankSys:
-        ancs = nx.ancestors(BankSys, rssd)
-        ancs.add(rssd)
-        for n in ancs:
-            if len(list(BankSys.predecessors(n))) == 0:
-                HHs.append(n)
-    else:
-        logger.warning('Cannot find %s in BankSys', str(rssd))
-        HHs.append(None)
-    return HHs
-
-
            
-def check_lei(lei: str, display_warnings: bool = True, logger=logging):
+def check_lei(lei: str, logger=logging):
     """Verify the checksum on a candidate Legal Entity Identifier (LEI).
     
     Under international standard ISO/CD 17442, LEIs may be issued for 
@@ -473,8 +414,6 @@ def check_lei(lei: str, display_warnings: bool = True, logger=logging):
 
     :param lei: A candidate LEI
     :type lei: str
-    :param display_warnings: Whether to display warning messages as issues are detected
-    :type display_warnings: bool
     :returns: The final chechsum modulus and a list of error codes
     :rtype: (int, list)
         
@@ -500,26 +439,26 @@ def check_lei(lei: str, display_warnings: bool = True, logger=logging):
     
     Check the valid value for the Citigroup LEI, and see a clean result
     
-        >>> check_lei('6SHGI4ZSSLCXXQSBB395', display_warnings=False)
+        >>> check_lei('6SHGI4ZSSLCXXQSBB395')
         (1, [])
 
     A simple true/false answer: is it valid? A valid LEI has final modulus = 1
     
-        >>> (1==check_lei('6SHGI4ZSSLCXXQSBB395', display_warnings=False)[0])
+        >>> (1==check_lei('6SHGI4ZSSLCXXQSBB395')[0])
         True
 
     Introduce some syntax errors and try again
     
-        >>> check_lei('6shgi4zsslcxxqsbb395', display_warnings=False)
+        >>> check_lei('6shgi4zsslcxxqsbb395')
         (-1, [3, 4])
-        >>> check_lei('6shgi4...bb395', display_warnings=False)
+        >>> check_lei('6shgi4...bb395')
         (-1, [2, 3, 4])
 
     Try faulty checksum digits (the final two characters) in a syntax-valid LEI
     
-        >>> check_lei('6SHGI4ZSSLCXXQSBB322', display_warnings=False)
+        >>> check_lei('6SHGI4ZSSLCXXQSBB322')
         (25, [])
-        >>> (1==check_lei('6SHGI4ZSSLCXXQSBB322', display_warnings=False)[0])
+        >>> (1==check_lei('6SHGI4ZSSLCXXQSBB322')[0])
         False
     """
     check = -1
@@ -533,7 +472,7 @@ def check_lei(lei: str, display_warnings: bool = True, logger=logging):
     if lei.upper() != lei:
         syntax_errcodes.append(3)
         logger.warning('LEI value is not uppercase: %s', lei)
-    if None==re.search(r'^[0-9A-Z]{18}[0-9]{2}$', lei):
+    if re.search(r'^[0-9A-Z]{18}[0-9]{2}$', lei) is None:
         syntax_errcodes.append(4)
         logger.warning('LEI does not match the official format: %s', lei)
     if lei[len(lei)-2:len(lei)] in ['00', '01', '99']:
