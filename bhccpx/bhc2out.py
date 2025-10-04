@@ -68,20 +68,6 @@ class Metrics(StrEnum):
     GNlbl = 'Geo_Nlabl'
 
 
-def extractBHC_cached(config: ConfigParser, asofdate: str, rssd: int, logger: Logger = logging) -> nx.DiGraph:
-    bhcfilename = f"BHC_{rssd}_{asofdate}.pkl"
-    bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
-    if os.path.exists(bhcfilepath):
-        with open(bhcfilepath, 'rb') as f:
-            return pkl.load(f)
-    else:
-        logger.warning('BHC file %s does not exist. Extracting BHC from scratch.', bhcfilepath)
-        BHC = sys2bhc.extractBHC(config, asofdate, rssd)
-        with open(bhcfilepath, 'wb') as f:
-            pkl.dump(BHC, f)
-        return BHC
-
-
 def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigParser, logger: Logger = logging) -> pd.DataFrame:
     """
     A dedicated function that produces the summary comparison of complexity
@@ -109,7 +95,7 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigP
     # bar.start()
     for rssd, asof in BHCconfigs:
         idx = idx + 1
-        BHC = extractBHC_cached(config, asof, rssd)
+        BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
         BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
         # bar.update(idx)

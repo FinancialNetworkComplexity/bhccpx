@@ -137,7 +137,7 @@ def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.
 def extractBHC(
     config: ConfigParser, asofdate, rssd,
     DATA: NICData | None = None, BankSys: nx.DiGraph | None = None,
-    logger=logging
+    use_cache: bool = True, logger=logging
 ) -> nx.DiGraph | None:
     """
     This function extracts a single BHC graph from a full banking system
@@ -176,6 +176,12 @@ def extractBHC(
             'csv2sys.outdir: %s differs from sys2bhc_outdir: %s',
             config.get('csv2sys', 'outdir'), config.get('sys2bhc', 'outdir')
         )
+    
+    bhcfilename = f"BHC_{rssd}_{asofdate}.pkl"
+    bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
+    if use_cache and os.path.exists(bhcfilepath):
+        with open(bhcfilepath, 'rb') as f:
+            return pkl.load(f)
 
     if BankSys is None:
         BankSys = csv2sys.make_banksys(config, asofdate, logger)
@@ -199,8 +205,6 @@ def extractBHC(
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
             logger.warning("RSSD=%s has no legal name, skipping", rssd)
             return
-        bhcfilename = f"BHC_{rssd}_{asofdate}.pkl"
-        bhcfilepath = os.path.join(config.get('sys2bhc', 'outdir'), bhcfilename)
         with open(bhcfilepath, 'wb') as f:
             pkl.dump(BHC, f)
         logger.debug(
