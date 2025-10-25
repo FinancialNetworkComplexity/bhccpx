@@ -34,7 +34,7 @@ import ast
 import sys
 
 import bhc_datautil
-from bhc_datautil import NICData
+from bhc_datautil import NICData, AsOfDate
 import csv2sys
 import logging
 
@@ -135,7 +135,7 @@ def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.
 
 
 def extractBHC(
-    config: ConfigParser, asofdate, rssd,
+    config: ConfigParser, asofdate: AsOfDate, rssd: int,
     DATA: NICData | None = None, BankSys: nx.DiGraph | None = None,
     use_cache: bool = True, logger=logging
 ) -> nx.DiGraph | None:
@@ -253,7 +253,7 @@ def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd,
     return BHC
 
 
-def clear_cache(cachedir: str, asof_list):
+def clear_cache(cachedir: str, asof_list: list[AsOfDate]):
     """Deletes any BHC_* files in the cache corresponding to the dates in asof_list"""
     asof_set = set(asof_list)
     for filename in os.listdir(cachedir):
@@ -262,9 +262,8 @@ def clear_cache(cachedir: str, asof_list):
         parts = filename.split("_")
         if len(parts) != 3:
             continue
-        rssd = parts[1]
         asofdate_with_ext = parts[2]
-        asofdate = asofdate_with_ext.replace(".pkl", "")
+        asofdate = AsOfDate.from_str(asofdate_with_ext.replace(".pkl", ""))
         if asofdate not in asof_set:
             continue
         filepath = os.path.join(cachedir, filename)
@@ -272,7 +271,7 @@ def clear_cache(cachedir: str, asof_list):
             os.remove(filepath)
 
 
-def extract_bhcs_ondate(config: ConfigParser, asofdate, logger=logging) -> list[nx.DiGraph | None]:
+def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate, logger=logging) -> list[nx.DiGraph | None]:
     """
     Loop over all RSSD IDs in the bhclist (in config), loading or creating 
     a cached pik file for each on the asofdate. 
@@ -307,9 +306,9 @@ def make_bhcs(config: ConfigParser, logger=logging):
     asof_list = ast.literal_eval(config.get('sys2bhc', 'asoflist'))
     if asof_list is None:
         # Include all dates in range when provided asof_list is None
-        asof_list = bhc_datautil.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+        asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     else:
-        asof_list = list(map(lambda YQ: bhc_datautil.make_asof(YQ)[0], asof_list))
+        asof_list = list(map(lambda YQ: bhc_datautil.AsOfDate.from_YQ_str(YQ), asof_list))
     if config.getboolean('sys2bhc', 'clearcache'):
         clear_cache(config.get('sys2bhc', 'outdir'), asof_list)
     if config.getint('sys2bhc', 'parallel') > 0:

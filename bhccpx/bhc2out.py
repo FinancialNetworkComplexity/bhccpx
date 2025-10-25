@@ -39,6 +39,7 @@ import logging
 from logging import Logger
 
 import bhc_datautil
+from bhc_datautil import AsOfDate
 import csv2sys
 import sys2bhc
 import bhca
@@ -85,29 +86,21 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigP
     :rtype: pd.DataFrame
     """
     # Loop to extract all of BHC snapshots defined by BHCconfigs
-    bar = None
     metrics = None
     BHCdict = {}
-    idx = 0
     logger.info('Creating BHC networks')
-    # widg = ['BHC-Quarter pairs: ', pb.Percentage(),' ', pb.Bar(),' ', pb.ETA()]
-    # bar = pb.ProgressBar(max_value=len(BHCconfigs), widgets=widg)
-    # bar.start()
-    for rssd, asof in BHCconfigs:
-        idx = idx + 1
+    for rssd, asof_int in BHCconfigs:
+        asof = AsOfDate.from_int(asof_int)
         BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
-        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
-        # bar.update(idx)
-    # bar.update(bar.max_value)
-    # bar.finish(end='', dirty=True)
+        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
+
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
     table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
     table2.columns = cols
     table2['rssd'] = table2['rssd'].astype(int)
     table2.sort_values(['rssd','asofdate'],ascending=[True,True],inplace=True)
-    # bar.update(bar.max_value)
-    # bar.finish(end='', dirty=True)
+
     logger.debug(table2.iloc[:,2:6])
     logger.debug(table2.iloc[:,6:14])
     logger.debug(table2.iloc[:,14:22])
@@ -133,14 +126,14 @@ def complexity_workup(BHC) -> dict[str, int]:
       
     B. Entity quotients
     
-      * Ent_Qfull_B1     = Cycle rank, full entity quotient
-      * Ent_Qhetr_B1     = Cycle rank, heterogeneous entity quotient
-      * Ent_Qfcon_B1     = Cycle rank, condensed entity quotient
-      * Ent_Qhcon_B1     = Cycle rank, heterogeneous condensed entity quotient
+      * Ent_Qfull_B1 = Cycle rank, full entity quotient
+      * Ent_Qhetr_B1 = Cycle rank, heterogeneous entity quotient
+      * Ent_Qfcon_B1 = Cycle rank, condensed entity quotient
+      * Ent_Qhcon_B1 = Cycle rank, heterogeneous condensed entity quotient
       * Ent_edgcn_B1 = 'Ent_edgcn_B1'
       * Ent_DjHom_B1 = 'Ent_DjHom_B1'
-      * Ent_DjHom_M = 'Ent_DjHom_M'
-      * Ent_Nlabl = 'Ent_Nlabl'
+      * Ent_DjHom_M  = 'Ent_DjHom_M'
+      * Ent_Nlabl    = 'Ent_Nlabl'
       
     B. Geography quotients
     
@@ -150,8 +143,8 @@ def complexity_workup(BHC) -> dict[str, int]:
       * Geo_Qhcon_B1 = 'Geo_Qhcon_B1'
       * Geo_edgcn_B1 = 'Geo_edgcn_B1'
       * Geo_DjHom_B1 = 'Geo_DjHom_B1'
-      * Geo_DjHom_M = 'Geo_DjHom_M'
-      * Geo_Nlabl = 'Geo_Nlabl'
+      * Geo_DjHom_M  = 'Geo_DjHom_M'
+      * Geo_Nlabl    = 'Geo_Nlabl'
 
     :param BHC: A directed graph representing a bank holding company
     :type BHC: networkx.DiGraph
@@ -252,7 +245,7 @@ def test_metrics(metrics: dict[str, int], context: str, logger: Logger = logging
             Metrics.BCrk, metrics[Metrics.BCrk], Metrics.GDHmB, metrics[Metrics.GDHmB], context
         )
         
-def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate:str, partition:str='entity_type', popup=False, logger:Logger=logging):
+def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOfDate, partition:str='entity_type', popup=False, logger:Logger=logging):
     """
     Create an SVG image file representing a BHC.
     The file is stored in the outdir, with the filename: RSSD_<rssd_hh>_<asofdate>.svg.
@@ -280,7 +273,7 @@ def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate:str, 
             GEO_JURISD = N[1]['GEO_JURISD']
             attribute_error = False
         except KeyError as KE:
-            logger.warning('Invalid attribute data for RSSD=%s at asofdate=%s', str(N), str(asofdate))
+            logger.warning('Invalid attribute data for RSSD=%s at asofdate=%s', N, asofdate)
         tt = '['+str(N[0])+']'+' '+ENTITY_TYPE+'\\n' +'------------\\n'+ NM_LGL +'\\n' +'------------\\n'+ GEO_JURISD
         if (attribute_error):
             dot.node('rssd'+str(N[0]), str(N[0]), style="filled", fillcolor="red;.5:green", tooltip=tt)
@@ -311,21 +304,24 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
     Create a full panel of complexity measures for all BHCs for all quarters
     in the list of as-of dates between asofdate0 and asofdate1.
     """
-    asof_list = bhc_datautil.assemble_asofs(config.get('bhc2out', 'asofdate0'), config.get('bhc2out', 'asofdate1'))
+    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('bhc2out', 'asofdate0'), config.get('bhc2out', 'asofdate1'))
     if config.getint('bhc2out', 'parallel') > 0:
         logger.info('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
         pcount = min(config.getint('bhc2out', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(pcount)
-        results = [pool.apply_async(all_bhc_complex, (config, asof, logger)) for asof in asof_list]
-        results = [res.get() for res in results]
+        results: dict[AsOfDate, dict[int, dict[str, int]]] = {
+            asof: pool.apply_async(all_bhc_complex, (config, asof, logger))
+            for asof in asof_list
+        }
+        results = {k: v.get() for k, v in results.items()}
         pool.close()
         pool.join()
         logger.debug('Parallel processing complete')
     else:
         logger.info('Beginning sequential processing for each asofdate')
-        results = []
+        results = {}
         for asofdate in pb.progressbar(asof_list, redirect_stdout=True):
-            results.append(all_bhc_complex(config, asofdate, logger))
+            results[asofdate] = all_bhc_complex(config, asofdate, logger)
         logger.debug('Sequential processing complete')
     
     panelfilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'panel_filename'))
@@ -334,18 +330,16 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
         csvwriter = csv.DictWriter(csvfile, fieldnames=fields)
         csvwriter.writeheader()
         # TODO: NEED TO SORT results BY ASOF AND RSSD BEFORE SAVING TO CSV
-        for asof_dict in results:
-            asofdate = asof_dict.pop('ASOF')
-            for rssd in asof_dict.keys():
-                metric_dict = asof_dict[rssd]
-                metric_dict['ASOF'] = asofdate
+        for asof, res in results.items():
+            for rssd, metric_dict in res.items():
+                metric_dict['ASOF'] = str(asof)
                 metric_dict['RSSD'] = rssd
                 csvwriter.writerow(metric_dict)
     csvfile.close()
     logger.info('**** Processing complete ****')
 
 
-def all_bhc_complex(config: ConfigParser, asofdate, logger=logging):
+def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, logger=logging):
     DATA = bhc_datautil.makeDATA(
         indir=config.get('bhc2out', 'indir'),
         fA=config.get('bhc2out', 'attributesactive'),
@@ -362,8 +356,7 @@ def all_bhc_complex(config: ConfigParser, asofdate, logger=logging):
         highholders: list[int] = sorted(list(DATA.highholders))
     logger.debug('Identified %s high-holders for %s', str(len(highholders)), str(asofdate))
 
-    BHCs = dict()
-    BHCs['ASOF'] = asofdate
+    BHCs: dict[int, dict[str, int]] = dict()
     for rssd in highholders:
         BHC = sys2bhc.populate_bhc(config, BankSys, DATA, rssd)
         metrics = complexity_workup(BHC)
