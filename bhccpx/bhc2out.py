@@ -306,6 +306,29 @@ def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate:str, 
         os.system("%s %s" % (config.get('bhc2out', 'browsercmd'), svg_file+'.svg'))
 
 
+def nxgraph2tikz(G:nx.Graph, outdir='.', filename='my_graph', logger:Logger=logging):
+    """
+    """
+    svg_filename = filename
+    svg_file = f"{outdir}/{svg_filename}"
+    dot = gv.Graph(comment='NAME:mygraph', engine='dot')
+    dot.attr('node', fontsize='8')
+    dot.attr('node', fixedsize='true')
+    G_allnodes = G.nodes(data=True)
+    for N in G_allnodes:
+        dot.node(str(N[0]), str(N[0]), style="filled", fillcolor='beige')
+    for E in G.edges():
+        src = str(E[0])
+        tgt = str(E[1])
+        Vs = G.nodes[E[0]]
+        Vt = G.nodes[E[1]]
+        dot.edge(src, tgt, arrowsize='0.3')
+    dot.render(filename=svg_file, format='svg')
+    dot.save(filename=svg_file+'.dot', directory=outdir)
+    os.system(f"svg2tikz --output {outdir}/{filename}.tkz {svg_file}.svg --figonly --indent")
+    # os.remove(tmppath)
+
+
 def make_panel(config: ConfigParser, logger: Logger = logging):
     """
     Create a full panel of complexity measures for all BHCs for all quarters

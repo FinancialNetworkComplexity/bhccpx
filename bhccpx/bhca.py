@@ -14,18 +14,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with the BHC Complexity Toolkit.  If not, 
+# along with the BHC Complexity Toolkit.  If not,
 # see <https://www.gnu.org/licenses/>.
 # -----------------------------------------------------------------------------
-# Copyright 2019, Mark D. Flood
+# Copyright 2025, Mark D. Flood
 #
 # Author: Mark D. Flood
-# Last revision: 22-Jun-2019
+# Last revision: 16-Oct-2025
 # -----------------------------------------------------------------------------
 
 from typing import Any
 import networkx as nx
 from enum import Enum
+import itertools
 import logging
 import re
 
@@ -39,15 +40,15 @@ class QType(Enum):
 
 def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
     """Gets all possible node labels associated with the attibute key (dimen)
-    
+
     Scans the given BHC graph for all node attributes with attribute name
     given by dimen. The return value is a set of all unique attribute values
-    found along this dimension, sorted in alphabetical order. 
-    
-    If a missings dictionary is provided, the function will update 
-    missings with new entries indicating which nodes within BHC are 
-    missing attribute values along the given dimension. 
-    
+    found along this dimension, sorted in alphabetical order.
+
+    If a missings dictionary is provided, the function will update
+    missings with new entries indicating which nodes within BHC are
+    missing attribute values along the given dimension.
+
     :param BHC: A directed graph representing a bank holding company
     :type BHC: networkx.DiGraph
     :param dimen: Key indicating which node attribute to scan for values
@@ -56,21 +57,21 @@ def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
     :type missings: dict
     :returns: A set containing all of the unique labels in BHC for the given dimen
     :rtype: list
-        
+
     .. Examples::
-        
+
     Setting up a BHC graph with known node attributes::
 
         >>> import bhc_testutil as TEST
         >>> BHCa = TEST.BHC_attribDAG()
-    
+
     Check the geographic jurisdiction labels::
-        
+
         >>> get_labels(BHCa, 'GEO_JURISD')
         ['GERMANY', 'UNITED STATES - CA', 'UNITED STATES - NC', 'UNITED STATES - NY']
 
     Check the entity type labels::
-        
+
         >>> get_labels(BHCa, 'entity_type')
         ['BHC', 'DEO', 'SMB']
     """
@@ -89,34 +90,34 @@ def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
 
 def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     """Calculate the quotient of BHC, partitioning by a given dimension
-    
+
     In a quotient, the nodes of the original graph (BHC) are partitioned
     into sets that share an identical value for the indicated attribute
     (dimen). For example, nodes might be clustered into groups that each
-    share the same entity type. The resulting quotient graph (BHCq) has 
-    one node for each such partition or cluster. 
-    
+    share the same entity type. The resulting quotient graph (BHCq) has
+    one node for each such partition or cluster.
+
     The original graph (BHC) is converted to an undirected graph (edge
     orientations are removed) before quotienting. The resulting quotient
-    graph is undirected. 
-    
-    There are four possible quotient types, depending on how the edges 
-    from the original graph (BHC) translate to edges in the quotient 
+    graph is undirected.
+
+    There are four possible quotient types, depending on how the edges
+    from the original graph (BHC) translate to edges in the quotient
     graph (BHCq):
-        
+
       1. Full quotient (QType.FULL): Every edge in BHC translates to an edge
-         between  the matching partition nodes in BHCq. For example, for the 
-         edge (u,v) in BHC, where u has entity type 'NAT' and v has 
+         between  the matching partition nodes in BHCq. For example, for the
+         edge (u,v) in BHC, where u has entity type 'NAT' and v has
          entity type 'IHC', the quotient graph would have a matching
          edge (NAT, IHC).
-      2. Heterogeneous quotient (QType.HETERO): A subgraph of the full quotient, 
-         in which any parallel edges between two nodes are collapsed into 
-         a single edge. 
-      3. Full condensed quotient (QType.FULL_COND): A subgraph of the full 
-         quotient, in which any self-loop edges are removed. 
-      4. Heterogeneous condensed quotient (QType.HETERO_COND): A subgraph of 
-         the heterogeneous quotient, in which any self-loop edges are removed. 
-    
+      2. Heterogeneous quotient (QType.HETERO): A subgraph of the full quotient,
+         in which any parallel edges between two nodes are collapsed into
+         a single edge.
+      3. Full condensed quotient (QType.FULL_COND): A subgraph of the full
+         quotient, in which any self-loop edges are removed.
+      4. Heterogeneous condensed quotient (QType.HETERO_COND): A subgraph of
+         the heterogeneous quotient, in which any self-loop edges are removed.
+
     :param BHC: A directed graph representing a bank holding company
     :type BHC: networkx.DiGraph
     :param dimen: Key indicating which node attribute to scan for values
@@ -129,26 +130,26 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     .. Examples::
 
     Setting up a BHC graph with known node attributes::
-        
+
         >>> import bhc_testutil as TEST
         >>> BHCa = TEST.BHC_attribDAG()
-    
+
     Full quotient (QType.FULL) by the geographic jurisdiction labels::
-    
+
         >>> get_quotient(BHCa, 'GEO_JURISD', QType.FULL).number_of_nodes()
         4
         >>> get_quotient(BHCa, 'GEO_JURISD', QType.FULL).number_of_edges()
         6
 
     Full quotient (QType.FULL) by the entity type labels::
-    
+
         >>> get_quotient(BHCa, 'entity_type', QType.FULL).number_of_nodes()
         3
         >>> get_quotient(BHCa, 'entity_type', QType.FULL).number_of_edges()
         6
 
     Heterogenous condensed quotient (QType.HETERO_COND) by the entity type labels::
-        
+
         >>> get_quotient(BHCa, 'entity_type', QType.HETERO_COND).number_of_nodes()
         3
         >>> get_quotient(BHCa, 'entity_type', QType.HETERO_COND).number_of_edges()
@@ -164,7 +165,7 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
         # Condensed (self-loops, but no multi-edges)
         # Heterogeneous condensed (no multi-edges/self-loops)
         BHCq = nx.Graph()
-    
+
     # Establish the nodes of the quotient
     entity_types = nx.get_node_attributes(BHCu, 'entity_type')
     nx.set_node_attributes(BHCq, entity_types)
@@ -183,19 +184,19 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     if Qtype in [QType.HETERO, QType.HETERO_COND]:
         removals = list(nx.selfloop_edges(BHCq))
         BHCq.remove_edges_from(removals)
-    
+
     return BHCq
 
 
 
 def node_equals(u, v, G: nx.DiGraph, dimen: str):
-    """Test whether two nodes (u,v) are equal along a given attribute dimension 
-    
-    Two nodes (u,v) in a graph (G) are equal along an attribute 
+    """Test whether two nodes (u,v) are equal along a given attribute dimension
+
+    Two nodes (u,v) in a graph (G) are equal along an attribute
     dimension (dimen), if u and v each have a dimen attribute defined in G,
-    and if the respective values of the attributes u.dimen and v.dimen 
-    are equal according to standard python semantics. 
-    
+    and if the respective values of the attributes u.dimen and v.dimen
+    are equal according to standard python semantics.
+
     :param u: A valid NetworkX node identifier
     :type u: node identifier
     :param v: A valid NetworkX node identifier
@@ -210,12 +211,12 @@ def node_equals(u, v, G: nx.DiGraph, dimen: str):
     .. Examples::
 
     Setting up a BHC graph with known node attributes::
-        
+
         >>> import bhc_testutil as TEST
         >>> BHCa = TEST.BHC_attribDAG()
-    
+
     Examine the first three nodes, for reference::
-        
+
         >>> BHCa.nodes(data=True)[0]['GEO_JURISD']
         'UNITED STATES - NY'
         >>> BHCa.nodes(data=True)[0]['entity_type']
@@ -230,14 +231,14 @@ def node_equals(u, v, G: nx.DiGraph, dimen: str):
         'SMB'
 
     Compare two equal nodes::
-        
+
         >>> node_equals(1, 2, BHCa, 'GEO_JURISD')
         True
         >>> node_equals(1, 2, BHCa, 'entity_type')
         True
 
     Compare two unequal nodes::
-        
+
         >>> node_equals(0, 1, BHCa, 'GEO_JURISD')
         False
         >>> node_equals(0, 1, BHCa, 'entity_type')
@@ -247,13 +248,31 @@ def node_equals(u, v, G: nx.DiGraph, dimen: str):
     if dimen in G.nodes[u] and dimen in G.nodes[v]:
         testval = (G.nodes[u][dimen] == G.nodes[v][dimen])
     return testval
-    
 
-#def get_nx_quotient(BHC, dimen):
-#    equivalence = lambda x, y: node_equals(x, y, BHC, dimen)
-#    BHCq = nx.quotient_graph(BHC.to_undirected(), equivalence)
-#    #print('Summing up:', BHC.number_of_nodes(), BHC.number_of_edges(), BHCq.number_of_nodes(), BHCq.number_of_edges())
-#    return BHCq
+
+def contract_edge(BHC: nx.DiGraph, edge: tuple, dimen: str):
+    edges_contracted = set()
+    edges_uncontract = set()
+    parent = edge[0]
+    child = edge[1]
+    if parent==child:
+        # Assumes parent/child values are ints
+        if BHC.has_edge(parent,child):
+            BHC.remove_edge(parent,child)
+        edges_contracted.add(edge)
+    elif BHC.has_node(parent) and BHC.has_node(child) and node_equals(parent, child, BHC, dimen):
+        for coe in BHC.out_edges(child, data=True):
+            # Loop over each "child out edge"; unpack coe[2] dict of attrs
+            BHC.add_edge(parent,coe[1],**coe[2])
+        for cie in BHC.in_edges(child, data=True):
+            # Loop over each "child in edge"; unpack cie[2] dict of attrs
+            BHC.add_edge(cie[1],parent,**cie[2])
+        BHC = nx.relabel_nodes(BHC, {parent: parent+","+child})
+        BHC.remove_node(child)
+        edges_contracted.add(edge)
+    else:
+        edges_uncontract.add(edge)
+    return BHC, len(edges_contracted), len(edges_uncontract)
 
 def contract(BHC: nx.DiGraph, dimen: str):
     # BHCdup is a deep copy of the BHC graph
@@ -274,9 +293,11 @@ def contract(BHC: nx.DiGraph, dimen: str):
             edges_contracted.add(e)
         elif BHC.has_node(parent) and BHC.has_node(child) and node_equals(parent, child, BHC, dimen):
             for coe in BHC.out_edges(child, data=True):
+                # Loop over each "child out edge"; unpack coe[2] dict of attrs
                 BHC.add_edge(parent,coe[1],**coe[2])
                 remap_edges[(coe[0],coe[1])] = (parent,coe[1])
             for cie in BHC.in_edges(child, data=True):
+                # Loop over each "child in edge"; unpack cie[2] dict of attrs
                 BHC.add_edge(cie[1],parent,**cie[2])
                 remap_edges[(cie[0],cie[1])] = (cie[0],parent)
             BHC.remove_node(child)
@@ -318,14 +339,14 @@ def number_of_components(BHC: nx.DiGraph):
     .. Examples::
 
     Start with a simple DAG, all in one component
-    
+
         >>> import bhc_testutil as TEST
         >>> bhc7 =TEST.BHC_simpleDAG()
         >>> number_of_components(bhc7)
         1
-    
+
     Cut an edge, to separate the simple DAG into two pieces
-    
+
         >>> bhc7x =TEST.BHC_simpleDAG()
         >>> bhc7x.remove_edge(0,1)
         >>> number_of_components(bhc7x)
@@ -338,8 +359,8 @@ def number_of_components(BHC: nx.DiGraph):
 
 def edge_count(BHC: nx.DiGraph):
     """Counts the number of edges in the undirected projection of BHC.
-    
-    For the given BHC (DiGraph) object, count the edges in its undirected 
+
+    For the given BHC (DiGraph) object, count the edges in its undirected
     equivalent. In projecting BHC to an undirected graph, any parallel edges
     (i.e., multiedges) are collapsed to a single undirected edge between the
     nodes. Self-loops are not removed in the projection to the undirected
@@ -349,17 +370,17 @@ def edge_count(BHC: nx.DiGraph):
     :type BHC: networkx.DiGraph
     :returns: Count of edges in the projection of BHC to a simple undirected graph
     :rtype: int
-    
+
     .. Examples::
 
     The count for a simple directed tree, with 7 nodes and 6 edges
-    
+
         >>> import bhc_testutil as TEST
         >>> edge_count(TEST.BHC_simpleDAG())
         6
 
     The count for a directed tree, with 7 nodes and 7 edges (1 reverse edge)
-    
+
         >>> edge_count(TEST.BHC_simpleDAG_plusreverseedge())
         6
     """
@@ -386,7 +407,7 @@ def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
     :rtype: int
 
     .. note::
-        Subsidiaries without corresponding entries in the weights dictionary are 
+        Subsidiaries without corresponding entries in the weights dictionary are
         ignored in the aggregation calculation.
     """
     rv = 0
@@ -398,32 +419,33 @@ def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
             pass
     return rv
 
-           
+
 def check_lei(lei: str, logger=logging):
     """Verify the checksum on a candidate Legal Entity Identifier (LEI).
-    
-    Under international standard ISO/CD 17442, LEIs may be issued for 
-    "legal entities," which can be essentially any unique party (except 
-    a natural person) that has legal standing to enter into formal contracts 
-    in its jurisdiction. 
-    
-    The Global Legal Entity Identifier Foundation (GLEIF) maintains certain 
-    data integrity rules for LEIs. One important rule is that each LEI 
+
+    Under international standard ISO/CD 17442, LEIs may be issued for
+    "legal entities," which can be essentially any unique party (except
+    a natural person) that has legal standing to enter into formal contracts
+    in its jurisdiction.
+
+    The Global Legal Entity Identifier Foundation (GLEIF) maintains certain
+    data integrity rules for LEIs. One important rule is that each LEI
     shall be a 20-character string that includes two final numeric characters
-    that are the checksum under standard ISO/IEC 7064 (mod 97-10). 
+    that are the checksum under standard ISO/IEC 7064 (mod 97-10).
 
     :param lei: A candidate LEI
     :type lei: str
     :returns: The final chechsum modulus and a list of error codes
     :rtype: (int, list)
-        
+
     For the final checksum modulus:
         * If the candidate LEI is checksum-valid, a code 1 is returned
         * If syntax flaws prevent calculation of a checksum, -1 is returned
-        * If the candidate LEI is syntax-valid but fails the checksum, 
+        * If the candidate LEI is syntax-valid but fails the checksum,
           a positive value other than 1 is returned
     For the list of error codes:
-        This list indicates syntax flaws in the candidate LEI. If this
+        This list indicates syntax flaws in the candidate LEI. Note that
+        valid syntax is necessary but not sufficient for a valid LEI. If the error
         list is empty, no syntax errors were detected. Possible syntax errors are:
         1. LEI value is too long
         2. LEI value is too short
@@ -431,31 +453,31 @@ def check_lei(lei: str, logger=logging):
         4. LEI value does not match the official format (regex):
             ``[0-9A-Z]{18}[0-9]{2}``
         5. LEI checkdigits are in the invalid range [00, 01, 99]
-    
+
     .. Examples::
 
     Applying this function to variations on a particular LEI. For example,
     the actual (valid) LEI for Citigroup is: ``6SHGI4ZSSLCXXQSBB395``
-    
+
     Check the valid value for the Citigroup LEI, and see a clean result
-    
+
         >>> check_lei('6SHGI4ZSSLCXXQSBB395')
         (1, [])
 
     A simple true/false answer: is it valid? A valid LEI has final modulus = 1
-    
+
         >>> (1==check_lei('6SHGI4ZSSLCXXQSBB395')[0])
         True
 
     Introduce some syntax errors and try again
-    
+
         >>> check_lei('6shgi4zsslcxxqsbb395')
         (-1, [3, 4])
         >>> check_lei('6shgi4...bb395')
         (-1, [2, 3, 4])
 
     Try faulty checksum digits (the final two characters) in a syntax-valid LEI
-    
+
         >>> check_lei('6SHGI4ZSSLCXXQSBB322')
         (25, [])
         >>> (1==check_lei('6SHGI4ZSSLCXXQSBB322')[0])
@@ -478,7 +500,7 @@ def check_lei(lei: str, logger=logging):
     if lei[len(lei)-2:len(lei)] in ['00', '01', '99']:
         syntax_errcodes.append(5)
         logger.warning('LEI checkdigits are in the invalid range [00, 01, 99]: %s', lei)
-    
+
     # If no syntax flaws are detected, go ahead and perform the checksum
     if len(syntax_errcodes) == 0:
         ASC_A = ord('A')
@@ -497,6 +519,30 @@ def check_lei(lei: str, logger=logging):
         if check != 1:
             logger.warning('LEI checksum failed: %s (modulus %d)', lei, check)
     return (check, syntax_errcodes)
+
+
+
+SPARSE_TRIADS = ('003', '012', '102')
+def find_all_triads(BHC):
+    """Examine BHC and return a dict of all the triads it contains"""
+
+    def triad_key(rssdA, rssdB, rssdC):
+        """Returns a single long variable that encodes the identity of a triad"""
+        triad = tuple(sorted((rssdA, rssdB, rssdC)))
+        tkey = triad[0]*10000000*10000000 + triad[1]*10000000 + triad[2]
+        return tkey, triad
+
+    triads = dict()
+    for v in sorted(BHC):
+        vnbrs = set(BHC.pred[v]) | set(BHC.succ[v])
+        for x in itertools.combinations(vnbrs,2):
+            (tkey, triad) = triad_key(v, x[0], x[1])
+            tcode = nx.algorithms.triads.TRICODE_TO_NAME[
+              nx.algorithms.triads._tricode(BHC, triad[0], triad[1], triad[2])]
+            if not(tcode in SPARSE_TRIADS) and not(tkey in triads):
+                triads[tkey] = tuple([triad, tcode])
+    return triads
+
 
 
 if __name__ == "__main__":
