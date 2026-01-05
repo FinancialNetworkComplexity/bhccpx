@@ -69,7 +69,7 @@ class Metrics(StrEnum):
     GNlbl = 'Geo_Nlabl'
 
 
-def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigParser, logger: Logger = logging) -> pd.DataFrame:
+def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: ConfigParser, logger: Logger = logging) -> pd.DataFrame:
     """
     A dedicated function that produces the summary comparison of complexity
     measures for the Wachovia-Wells Fargo case study. This appears as Table 2
@@ -86,11 +86,10 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, int]], config: ConfigP
     :rtype: pd.DataFrame
     """
     # Loop to extract all of BHC snapshots defined by BHCconfigs
-    metrics = None
+    metrics = {}
     BHCdict = {}
     logger.info('Creating BHC networks')
-    for rssd, asof_int in BHCconfigs:
-        asof = AsOfDate.from_int(asof_int)
+    for rssd, asof in BHCconfigs:
         BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
         BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())

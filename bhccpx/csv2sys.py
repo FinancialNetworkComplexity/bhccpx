@@ -189,15 +189,15 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
         
         # Adding in the singleton institutions (no edges in Relationships file)
         logger.debug(
-            'System (pre) as of %s has %s nodes and %s edges',
+            'System (pre) asof %s has %s nodes and %s edges',
             asofdate, BankSys.number_of_nodes(), BankSys.number_of_edges())
         indir = config.get('csv2sys', 'indir')
         fA = config.get('csv2sys', 'attributesactive')
         fB = config.get('csv2sys', 'attributesbranch')
         fC = config.get('csv2sys', 'attributesclosed')
         ATTdf = bhc_datautil.makeATTs(indir, fA, fB, fC, filter_asofdate=asofdate)
-        ATTdf = ATTdf[ATTdf.DT_END >= asofdate.to_int()]
-        ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate.to_int()]
+        ATTdf = ATTdf[ATTdf.DT_END >= int(asofdate)]
+        ATTdf = ATTdf[ATTdf.DT_OPEN <= int(asofdate)]
         nodes_BankSys = set(BankSys.nodes)
         nodes_ATTdf = set(ATTdf['ID_RSSD'].unique())
         nodes_new = nodes_ATTdf.difference(nodes_BankSys)
@@ -208,7 +208,7 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
         with open(sysfilepath, 'wb') as f:
             pkl.dump(BankSys, f)
         logger.debug(
-            'System (post) as of %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
+            'System (post) asof %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
             asofdate, BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
     return BankSys
 

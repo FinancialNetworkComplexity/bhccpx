@@ -82,7 +82,7 @@ class AsOfDate:
         q = ((m - 1) // 3) + 1
         return AsOfDate(y, q, m, d)
     
-    def to_int(self) -> int:
+    def __int__(self) -> int:
         return self.year * 10000 + self.month * 100 + self.day
     
     @staticmethod
@@ -101,14 +101,10 @@ class AsOfDate:
     def __repr__(self):
         return str(self)
     
-    def __eq__(self, other):
-        if not isinstance(other, AsOfDate):
-            return NotImplemented
+    def __eq__(self, other: "AsOfDate"):
         return (self.year, self.month, self.day) == (other.year, other.month, other.day)
     
-    def __gt__(self, other):
-        if not isinstance(other, AsOfDate):
-            return NotImplemented
+    def __gt__(self, other: "AsOfDate"):
         return (self.year, self.month, self.day) > (other.year, other.month, other.day)
     
     def __hash__(self):
@@ -280,13 +276,13 @@ def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) 
     :param csvfile: An open, readable pointer to a tab-delimited CSV file that
     contains the information from a NIC attributes download
     :type csvfile: TextIOWrapper
-    :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
-    :type filter_asofdate: AsOfDate | None
     :param nicsource: A single character indicating the nature of the node.
         'A' indicates an "active" or going-concern node.
         'B' indicates a "branch" of an active node; not a distinct entity.
         'C' indicates a "closed" or "inactive" node.
     :type nicsource: str
+    :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
+    :type filter_asofdate: AsOfDate | None
     :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
     :rtype: pd.DataFrame
     """
@@ -369,8 +365,8 @@ def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) 
     ATTdf.rename(columns={'#ID_RSSD': 'ID_RSSD'}, inplace=True)
     ATTdf['rssd'] = ATTdf['ID_RSSD']
     if filter_asofdate is not None:
-        ATTdf = ATTdf[ATTdf.DT_END >= filter_asofdate.to_int()]
-        ATTdf = ATTdf[ATTdf.DT_OPEN <= filter_asofdate.to_int()]
+        ATTdf = ATTdf[ATTdf.DT_END >= int(filter_asofdate)]
+        ATTdf = ATTdf[ATTdf.DT_OPEN <= int(filter_asofdate)]
     ATTdf.insert(len(ATTdf.columns), 'NICsource', nicsource, allow_duplicates=True)
     ATTdf.reset_index(inplace=True)
     ATTdf.set_index(['rssd'], inplace=True)
@@ -420,8 +416,8 @@ def RELcsv2df(csvfile, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     RELdf = pd.read_csv(csvfile, dtype=DTYPES_REL)
     RELdf.rename(columns={'#ID_RSSD_PARENT': 'ID_RSSD_PARENT'}, inplace=True)
     if filter_asofdate is not None:
-        RELdf = RELdf[RELdf.DT_START <= filter_asofdate.to_int()]
-        RELdf = RELdf[RELdf.DT_END >= filter_asofdate.to_int()]
+        RELdf = RELdf[RELdf.DT_START <= int(filter_asofdate)]
+        RELdf = RELdf[RELdf.DT_END >= int(filter_asofdate)]
     RELdf.reset_index(inplace=True)
     RELdf.set_index(['ID_RSSD_PARENT', 'ID_RSSD_OFFSPRING', 'DT_START', 'DT_END'], inplace=True)
     RELdf.sort_index(inplace=True)
