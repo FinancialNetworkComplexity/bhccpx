@@ -27,7 +27,7 @@ import sys
 import os
 import re
 import logging
-import progressbar as pb
+from tqdm.auto import tqdm
 from configparser import ConfigParser
 from io import TextIOWrapper
 import ast
@@ -124,9 +124,7 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
     chunksize_processed = 0
     xmlfilesize = os.path.getsize(xmlfilepath)
     sys.stdout.flush()
-    widg = [f"{xmlfilename}: ", pb.Percentage(),' ', pb.Bar(),' ', pb.ETA()]
-    bar = pb.ProgressBar(max_value=xmlfilesize, widgets=widg)
-    bar.start()
+    pbar = tqdm(total=xmlfilesize, desc=xmlfilename)
 
     # Open files to read XML and write CSV
     outfilename = os.path.splitext(xmlfilename)[0] + config.get('xml2csv', 'outfileext')
@@ -135,9 +133,9 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
         with open(outfilepath, 'w', 1) as outfile:
             while not infileEOF:
                 chunk = chunk + infile.read(chunksize)
-                chunksize_processed = chunksize_processed + min(chunksize, xmlfilesize-chunksize_processed)
-                chunksize_processed = min(chunksize_processed + chunksize, xmlfilesize)
-                bar.update(chunksize_processed)
+                delta = min(chunksize, xmlfilesize-chunksize_processed)
+                pbar.update(delta)
+                chunksize_processed += delta
 
                 if needs_csv_head:
                     # first row not done yet, need to skip frontmatter
@@ -159,9 +157,7 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
                 if chunk.upper().find('</DATA>') >= 0:
                     infileEOF = True
     
-    bar.update(bar.max_value)
-    bar.finish(end='', dirty=True)
-    pb.utils.streams.flush()
+    pbar.close()
     if not infileEOF:
         logger.error('Did not find </DATA> end tag in XML file: %s', xmlfilepath)
 
