@@ -35,6 +35,123 @@ import configparser as cp
 import json
 import pickle as pkl
 from dataclasses import dataclass
+from functools import total_ordering
+
+
+@total_ordering
+@dataclass
+class AsOfDate:
+    year: int
+    quarter: int
+    month: int
+    day: int
+
+    @staticmethod
+    def _quarter_end_date(quarter: int) -> tuple[int, int]:
+        if quarter == 1:
+            return (3, 31)
+        elif quarter == 2:
+            return (6, 30)
+        elif quarter == 3:
+            return (9, 30)
+        elif quarter == 4:
+            return (12, 31)
+        raise ValueError(f"Invalid quarter: {quarter}. Quarter must be in 1..4.")
+
+    @staticmethod
+    def from_YQ(year: int, quarter: int) -> "AsOfDate":
+        if quarter not in [1, 2, 3, 4]:
+            raise ValueError(f"Invalid quarter: {quarter}. Quarter must be in 1..4.")
+        month, day = AsOfDate._quarter_end_date(quarter)
+        return AsOfDate(year, quarter, month, day)
+    
+    @staticmethod
+    def from_YQ_str(yq_str: str) -> "AsOfDate":
+        if len(yq_str) != 6 or yq_str[4] != 'Q':
+            raise ValueError(f"Invalid yq_str format: {yq_str}. Expected format is 'YYYYQQ'.")
+        year = int(yq_str[0:4])
+        quarter = int(yq_str[5:6])
+        return AsOfDate.from_YQ(year, quarter)
+    
+    def to_YQ_str(self) -> str:
+        return f"{self.year:04d}Q{self.quarter}"
+    
+    @staticmethod
+    def from_int(asof_int: int) -> "AsOfDate":
+        y, m, d = asof_int // 10000, (asof_int % 10000) // 100, asof_int % 100
+        q = ((m - 1) // 3) + 1
+        return AsOfDate(y, q, m, d)
+    
+    def __int__(self) -> int:
+        return self.year * 10000 + self.month * 100 + self.day
+    
+    @staticmethod
+    def from_str(asof_str: str) -> "AsOfDate":
+        if len(asof_str) != 8:
+            raise ValueError(f"Invalid asof_str format: {asof_str}. Expected format is 'YYYYMMDD'.")
+        y = int(asof_str[0:4])
+        m = int(asof_str[4:6])
+        d = int(asof_str[6:8])
+        q = ((m - 1) // 3) + 1
+        return AsOfDate(y, q, m, d)
+
+    def __str__(self):
+        return f"{self.year:04d}{self.month:02d}{self.day:02d}"
+    
+    def __repr__(self):
+        return str(self)
+    
+    def __eq__(self, other: "AsOfDate"):
+        return (self.year, self.month, self.day) == (other.year, other.month, other.day)
+    
+    def __gt__(self, other: "AsOfDate"):
+        return (self.year, self.month, self.day) > (other.year, other.month, other.day)
+    
+    def __hash__(self):
+        return hash(str(self))
+    
+    def nextq(self) -> "AsOfDate":
+        if self.quarter == 4:
+            return AsOfDate.from_YQ(self.year + 1, 1)
+        else:
+            return AsOfDate.from_YQ(self.year, self.quarter + 1)
+    
+    def prevq(self) -> "AsOfDate":
+        if self.quarter == 1:
+            return AsOfDate.from_YQ(self.year - 1, 4)
+        else:
+            return AsOfDate.from_YQ(self.year, self.quarter - 1)
+    
+    @staticmethod
+    def most_recent(year: int, month: int) -> "AsOfDate":
+        return AsOfDate.from_YQ(year, ((month - 1) // 3) + 1)
+    
+    @staticmethod
+    def make_range(d0: 'AsOfDate', d1: 'AsOfDate', logger=logging) -> list['AsOfDate']:
+        asofs = []
+        if d0 > d1:
+            logger.error('End date, %s, precedes start date, %s', d0, d1)
+        if d0.year == d1.year:
+            # Full range is within one year
+            for q in range(d0.quarter, d1.quarter+1):
+                asofs.append(AsOfDate.from_YQ(d0.year, q))
+        else:
+            # For the (possibly partial) first year in the range
+            for q in range(d0.quarter, 5):
+                asofs.append(AsOfDate.from_YQ(d0.year, q))
+            # For the interior (full) years in the range
+            for y in range(d0.year+1, d1.year):
+                for q in range(1,5):
+                    asofs.append(AsOfDate.from_YQ(y, q))
+            # For the (possibly partial) last year in the range
+            for q in range(1,d1.quarter+1):
+                asofs.append(AsOfDate.from_YQ(d1.year, q))
+        return asofs
+
+    @staticmethod
+    def make_range_from_YQ_strs(d0_str: str, d1_str: str, logger=logging) -> list['AsOfDate']:
+        d0, d1 = AsOfDate.from_YQ_str(d0_str), AsOfDate.from_YQ_str(d1_str)
+        return AsOfDate.make_range(d0, d1, logger=logger)
 
 
 @dataclass
@@ -150,7 +267,7 @@ def print_config(config, modulefile):
 
 
 
-def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
+def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     """
     Converts a tab-delimited CSV file containing NIC attributes data into a Pandas DataFrame.
     The DataFrame is indexed on the ID_RSSD column, and includes an additional
@@ -159,15 +276,13 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
     :param csvfile: An open, readable pointer to a tab-delimited CSV file that
     contains the information from a NIC attributes download
     :type csvfile: TextIOWrapper
-    :param asofdate: An integer value of the form YYYYMMDD
-    :type asofdate: int
     :param nicsource: A single character indicating the nature of the node.
         'A' indicates an "active" or going-concern node.
         'B' indicates a "branch" of an active node; not a distinct entity.
         'C' indicates a "closed" or "inactive" node.
     :type nicsource: str
-    :param filter_asof: If True, filter records based on asofdate, by default False
-    :type filter_asof: bool, optional
+    :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
+    :type filter_asofdate: AsOfDate | None
     :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
     :rtype: pd.DataFrame
     """
@@ -249,9 +364,9 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
     ATTdf = pd.read_csv(csvfile, dtype=DTYPES_ATT)
     ATTdf.rename(columns={'#ID_RSSD': 'ID_RSSD'}, inplace=True)
     ATTdf['rssd'] = ATTdf['ID_RSSD']
-    if filter_asof:
-        ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
-        ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate]
+    if filter_asofdate is not None:
+        ATTdf = ATTdf[ATTdf.DT_END >= int(filter_asofdate)]
+        ATTdf = ATTdf[ATTdf.DT_OPEN <= int(filter_asofdate)]
     ATTdf.insert(len(ATTdf.columns), 'NICsource', nicsource, allow_duplicates=True)
     ATTdf.reset_index(inplace=True)
     ATTdf.set_index(['rssd'], inplace=True)
@@ -260,7 +375,7 @@ def ATTcsv2df(csvfile, asofdate, nicsource, filter_asof=False) -> pd.DataFrame:
 
 
       
-def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
+def RELcsv2df(csvfile, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     """
     Converts a tab-delimited CSV file containing NIC relationship data into a Pandas DataFrame.
     The DataFrame is indexed on the composite key (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END).
@@ -269,10 +384,8 @@ def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
 
     :param csvfile: An open, readable pointer to a tab-delimited CSV file.
     :type csvfile: TextIOWrapper
-    :param asofdate: An integer value of the form YYYYMMDD.
-    :type asofdate: int
-    :param filter_asof: If True, filter records based on asofdate, by default False
-    :type filter_asof: bool, optional
+    :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
+    :type filter_asofdate: AsOfDate | None
     :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
     :rtype: pd.DataFrame
     """
@@ -302,9 +415,9 @@ def RELcsv2df(csvfile, asofdate, filter_asof=True) -> pd.DataFrame:
     }
     RELdf = pd.read_csv(csvfile, dtype=DTYPES_REL)
     RELdf.rename(columns={'#ID_RSSD_PARENT': 'ID_RSSD_PARENT'}, inplace=True)
-    if (filter_asof):
-        RELdf = RELdf[RELdf.DT_START <= asofdate]
-        RELdf = RELdf[RELdf.DT_END >= asofdate]
+    if filter_asofdate is not None:
+        RELdf = RELdf[RELdf.DT_START <= int(filter_asofdate)]
+        RELdf = RELdf[RELdf.DT_END >= int(filter_asofdate)]
     RELdf.reset_index(inplace=True)
     RELdf.set_index(['ID_RSSD_PARENT', 'ID_RSSD_OFFSPRING', 'DT_START', 'DT_END'], inplace=True)
     RELdf.sort_index(inplace=True)
@@ -362,57 +475,8 @@ def maps_rssd_cert(DATA: NICData):
         cert2rssd[cert] = rssd
     return (rssd2cert, cert2rssd)
 
-
-def stringify_qtrend(asofdate: int) -> int:
-    """Converts an as-of date to a YYYYQQ string for the next quarter end"""
-    yyyy = int(asofdate/10000)
-    mmdd = asofdate -yyyy*10000
-    if (930 < mmdd):
-        Nqtr = str(yyyy)+'Q4'
-    elif (630 < mmdd):
-        Nqtr = str(yyyy)+'Q3'
-    elif (331 < mmdd):
-        Nqtr = str(yyyy)+'Q2'
-    elif (100 < mmdd):
-        Nqtr = str(yyyy)+'Q1'
-    return Nqtr
-        
     
-def next_qtrend(asofdate: int) -> int:
-    """Constructs the next quarter-end date for a given as-of date"""
-    yyyy = int(asofdate/10000)
-    mmdd = asofdate -yyyy*10000
-    if (1231 == mmdd):
-        MRqtr = asofdate
-    elif (930 < mmdd):
-        MRqtr = yyyy*10000 + 1231
-    elif (630 < mmdd):
-        MRqtr = yyyy*10000 + 930
-    elif (331 < mmdd):
-        MRqtr = yyyy*10000 + 630
-    elif (100 < mmdd):
-        MRqtr = yyyy*10000 + 331
-    return MRqtr
-
-    
-def rcnt_qtrend(asofdate: int) -> int:
-    """Constructs the next quarter-end date for a given as-of date"""
-    yyyy = int(asofdate/10000)
-    mmdd = asofdate -yyyy*10000
-    if (1231 == mmdd):
-        MRqtr = asofdate
-    elif (930 < mmdd):
-        MRqtr = yyyy*10000 + 930
-    elif (630 < mmdd):
-        MRqtr = yyyy*10000 + 630
-    elif (331 < mmdd):
-        MRqtr = yyyy*10000 + 331
-    elif (100 < mmdd):
-        MRqtr = (yyyy-1)*10000 + 1231
-    return MRqtr
-
-    
-def augment_FAILdf(FAILdf, outdir, dataasof):
+def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
     FAILdf.sort_values(by=['FAILDATE'], inplace=True)
     DATA = fetch_DATA(outdir, dataasof)
     ATTdf = DATA.attributes
@@ -424,13 +488,13 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
     FAILdf2['ENTITY_TYPE']=''
     FAILdf2['CNTRY_NM']=''
     FAILdf2['STATE_ABBR_NM']=''
-    rcntasof = -1
+    rcntasof = AsOfDate.from_YQ(-1, 1)
     BankSys = None
-    for idx,row in FAILdf.iterrows():
+    for idx, row in FAILdf.iterrows():
         failasof = FAILdf.loc[idx]['FAILDATE']
-        failasof = failasof.year*10000 + failasof.month*100 + failasof.day
-        if rcntasof != rcnt_qtrend(failasof):
-            rcntasof = rcnt_qtrend(failasof)
+        failasof = AsOfDate.most_recent(failasof.year, failasof.month)
+        if rcntasof != failasof:
+            rcntasof = failasof
             sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pkl'
             sysfilepath = os.path.join(outdir, sysfilename)
             with open(sysfilepath, 'rb') as f:
@@ -450,11 +514,11 @@ def augment_FAILdf(FAILdf, outdir, dataasof):
     return FAILdf2
 
 
-def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate, logger=logging) -> NICData:
+def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDate, logger=logging) -> NICData:
     """A function to assemble the NIC data for given asofdate into a single object."""
-    ATTdf = makeATTs(indir, file_attA, file_attB, file_attC, asofdate)
+    ATTdf = makeATTs(indir, file_attA, file_attB, file_attC)
     csvfilepathR = os.path.join(indir, file_rel)
-    RELdf = RELcsv2df(csvfilepathR, asofdate)
+    RELdf = RELcsv2df(csvfilepathR)
     highholders, entities, parents, offspring = NIC_highholders(RELdf, asofdate, logger=logger)
     return NICData(
         attributes=ATTdf,
@@ -466,18 +530,18 @@ def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate, logger=
     )
 
 
-def makeATTs(indir, file_attA, file_attB, file_attC, asofdate, filter_asof=False) -> pd.DataFrame:
+def makeATTs(indir, file_attA, file_attB, file_attC, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     csvfilepathA = os.path.join(indir, file_attA)
     csvfilepathB = os.path.join(indir, file_attB)
     csvfilepathC = os.path.join(indir, file_attC)
-    ATTdf_a = ATTcsv2df(csvfilepathA, asofdate, 'A', filter_asof)
-    ATTdf_b = ATTcsv2df(csvfilepathB, asofdate, 'B', filter_asof)
-    ATTdf_c = ATTcsv2df(csvfilepathC, asofdate, 'C', filter_asof)
+    ATTdf_a = ATTcsv2df(csvfilepathA, 'A', filter_asofdate)
+    ATTdf_b = ATTcsv2df(csvfilepathB, 'B', filter_asofdate)
+    ATTdf_c = ATTcsv2df(csvfilepathC, 'C', filter_asofdate)
     ATTdf = pd.concat([ATTdf_a, ATTdf_b, ATTdf_c])
     return ATTdf
 
 
-def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=None, logger=logging) -> NICData:
+def fetch_DATA(outdir, asofdate: AsOfDate, indir=None, fA=None, fB=None, fC=None, fREL=None, logger=logging) -> NICData:
     DATA = None
     datafilename = f"DATA_{asofdate}.pkl"
     datafilepath = os.path.join(outdir, datafilename)
@@ -492,100 +556,7 @@ def fetch_DATA(outdir, asofdate, indir=None, fA=None, fB=None, fC=None, fREL=Non
     return DATA
 
 
-#def fetch_banksys(sysfilepath, csvfilepath, asofdate):
-##    DATA = None
-##    datafilename = 'DATA_'+str(asofdate)+'.pik'
-##    datafilepath = os.path.join(outdir, datafilename)
-##    nonefiles = (None==indir or None==fA or None==fB or None==fC or None==fREL)
-##    if (os.path.isfile(datafilepath)):
-##        f = open(datafilepath, 'rb')
-##        DATA = pik.load(f)
-##        f.close()
-##    elif (not(nonefiles)):
-##        DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate)
-##        f = open(datafilepath, 'wb')
-##        pik.dump(DATA, f)
-##        f.close()
-##    return DATA
-#
-#    BankSys = None
-#    if os.path.isfile(sysfilepath):
-##        if (veryverbose): print('FOUND: Banking system file path:   ', sysfilepath)
-#        f = open(sysfilepath, 'rb')
-#        BankSys = pik.load(f)
-#        f.close()
-#    else:
-##        if (veryverbose): print('CREATING: Banking system file path:', sysfilepath, asofdate)
-#        BankSys = nx.DiGraph()
-##        if (veryverbose): print('CSV file path:', csvfilepath, asofdate)
-#        RELdf = UTIL.RELcsv2df(csvfilepath, asofdate)
-#        (ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END) = UTIL.REL_IDcols(RELdf)
-#        for row in RELdf.iterrows():
-#            date0 = int(row[0][DT_START])
-#            date1 = int(row[0][DT_END])
-#            rssd_par = row[0][ID_RSSD_PARENT]
-#            rssd_off = row[0][ID_RSSD_OFFSPRING]
-#            if (asofdate < date0 or asofdate > date1):
-#                if (verbose): print('ASOFDATE,', asofdate, 'out of bounds:', rssd_par, rssd_off, date0, date1)
-#                continue   
-#            BankSys.add_edge(rssd_par, rssd_off)
-#        f = open(sysfilepath, 'wb')
-#        pik.dump(BankSys, f)
-#        f.close()
-##    if (veryverbose): print('System as of '+str(asofdate)+' has', BankSys.number_of_nodes(), 'nodes and', BankSys.number_of_edges(), 'edges')
-#    return BankSys
-
-
-
-def make_asof(YYYYQQ: str) -> tuple[int, int, int, str]:
-    """
-    Parses the string YYYYQQ (e.g., "1986Q2") into an asofdate tuple:
-        yyyymmdd:  An int variable indicating year/mo/day, 19860630
-        y:         An int variable indicating the year, 1986
-        q:         An int variable indicating the quarter, 2
-        Q:         A string variable indicating the quarter, 'Q2'
-    """
-    MMDDs = [331, 630, 930, 1231]
-    y = int(YYYYQQ[0:4])
-    q = int(YYYYQQ[5:6])
-    Q = YYYYQQ[4:6]
-    yyyymmdd = y*10000+MMDDs[q-1]
-    return yyyymmdd, y, q, Q
- 
-
-
-def assemble_asofs(YQ0, YQ1):
-    """
-    Parses the strings YQ0 and YQ1, each of the form YYYYQQ (e.g., "1986Q2") into
-    asofdate variables (of type int), each of the form YYYYMMDD (e.g., 19860630).
-    Every quarter-end asofdate between YQ0 and YQ1 (inclusive) is added to
-    the asofs list, which is returned.
-    """
-    asofs = []
-    yyyymmdd0, Y0, q0, Q0 =  make_asof(YQ0)
-    yyyymmdd1, Y1, q1, Q1 = make_asof(YQ1)
-    if yyyymmdd0 > yyyymmdd1:
-        print('ERROR: End date,', yyyymmdd1, 'precedes start date,', yyyymmdd0)
-    if Y0 == Y1:
-        # Full range is within one year
-        for q in range(q0,q1+1):
-            asofs.append(make_asof(str(Y0)+'Q'+str(q))[0])
-    else:
-        # For the (possibly partial) first year in the range
-        for q in range(q0,5):
-            asofs.append(make_asof(str(Y0)+'Q'+str(q))[0])
-        # For the interior (full) years in the range
-        for y in range(Y0+1, Y1):
-            for q in range(1,5):
-                asofs.append(make_asof(str(y)+'Q'+str(q))[0])
-        # For the (possibly partial) last year in the range
-        for q in range(1,q1+1):
-            asofs.append(make_asof(str(Y1)+'Q'+str(q))[0])
-    return asofs
-
-
-
-def NIC_highholders(RELdf, asofdate, logger=logging) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]:
+def NIC_highholders(RELdf, asofdate: AsOfDate, logger=logging) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]:
     """
     A function to walk through the rows of the relationships dataframe,
     creating four key derived objects:
@@ -603,7 +574,7 @@ def NIC_highholders(RELdf, asofdate, logger=logging) -> tuple[set[int], dict[int
     :param RELdf: The relationships dataframe
     :type RELdf: pd.DataFrame
     :param asofdate: The as-of date for which the relationships are valid
-    :type asofdate: int
+    :type asofdate: AsOfDate
     :return: A tuple containing (high_holders, entities, parents, offspring)
     :rtype: tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]
     """
@@ -615,15 +586,15 @@ def NIC_highholders(RELdf, asofdate, logger=logging) -> tuple[set[int], dict[int
     high_holders = set()
     # Loop through Relationships to assemble entities, parents, and offspring
     for row in RELdf.iterrows():
-        date0 = int(row[0][DT_START])
-        date1 = int(row[0][DT_END])
+        date0 = AsOfDate.from_int(row[0][DT_START])
+        date1 = AsOfDate.from_int(row[0][DT_END])
         rssd_par = row[0][ID_RSSD_PARENT]
         rssd_off = row[0][ID_RSSD_OFFSPRING]
         if asofdate < date0 or date1 < asofdate:
-            logger.warning(
-                'asofdate: %s in out of bounds: %d, %d, %d, %d in NIC_highholders',
-                asofdate, rssd_par, rssd_off, date0, date1
-            )
+            # logger.warning(
+            #     'asofdate: %s in out of bounds: %d, %d, %s, %s in NIC_highholders',
+            #     asofdate, rssd_par, rssd_off, date0, date1
+            # )
             continue   
         entities.add(rssd_par)
         try:

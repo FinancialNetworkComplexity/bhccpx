@@ -33,12 +33,13 @@ import progressbar as pb
 
 import bhca
 import bhc_datautil
+from bhc_datautil import AsOfDate
 from configparser import ConfigParser
 
 import logging
 
 
-def clear_cache(cachedir, YQ0, YQ1):
+def clear_cache(cachedir: str, YQ0: str, YQ1: str):
     """
     This function removes cached pickle files from the specified cache directory
     that correspond to dates within the range defined by YQ0 and YQ1. The files
@@ -51,7 +52,7 @@ def clear_cache(cachedir, YQ0, YQ1):
     :param YQ1: End date for the range of files to clear
     :type YQ1: str or date-like
     """
-    asof_list = bhc_datautil.assemble_asofs(YQ0, YQ1)
+    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(YQ0, YQ1)
     for asofdate in asof_list:
         sysfilename = f"NIC__{asofdate}.pkl"
         sysfilepath = os.path.join(cachedir, sysfilename)
@@ -132,8 +133,8 @@ def find_highholders(
         HHs = [node for node in raw_HHs if BankSys.nodes[node].get('entity_type') in hc_types]
     return HHs
 
-           
-def make_banksys(config: ConfigParser, asofdate, logger=logging):
+
+def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
     """
     Read or create a NetworkX graph of a full banking system on a given date.
     If a pickle file for this banking system exists, it will load and return it.
@@ -143,8 +144,8 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
 
     :param config: Configuration parser containing file paths and settings
     :type config: ConfigParser
-    :param asofdate: Date for which to build/load the banking system (YYYYMMDD format)
-    :type asofdate: int or str
+    :param asofdate: Date for which to build/load the banking system
+    :type asofdate: AsOfDate
     :param logger: Logger instance for debugging and info messages
     :type logger: logging.Logger, optional
     :returns: Directed graph representing the banking system hierarchy
@@ -155,6 +156,9 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
     .. note::
         The function creates pickle files in the format 'NIC__YYYYMMDD.pkl' for caching.
     """
+    if logger is None:
+        logger = logging.getLogger("csv2sys")
+
     sysfilename = 'NIC_'+'_'+str(asofdate)+'.pkl'
     sysfilepath = os.path.join(config.get('csv2sys', 'outdir'), sysfilename)
     relfilename = config.get('csv2sys', 'relationships')
@@ -170,31 +174,30 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
         BankSys = nx.DiGraph()
         csvfilepath = os.path.join(config.get('csv2sys', 'indir'), config.get('csv2sys', 'relationships'))
         logger.debug('CSV file path: %s %s', csvfilepath, asofdate)
-        print(f"CSV file path: {csvfilepath}, {asofdate}")
 
-        RELdf = bhc_datautil.RELcsv2df(csvfilepath, asofdate)
+        RELdf = bhc_datautil.RELcsv2df(csvfilepath)
         ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = bhc_datautil.REL_IDcols(RELdf)
         for row in RELdf.iterrows():
-            date0 = int(row[0][DT_START])
-            date1 = int(row[0][DT_END])
+            date0 = AsOfDate.from_int(row[0][DT_START])
+            date1 = AsOfDate.from_int(row[0][DT_END])
             rssd_par = row[0][ID_RSSD_PARENT]
             rssd_off = row[0][ID_RSSD_OFFSPRING]
             if asofdate < date0 or asofdate > date1:
-                logger.info('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
-                continue   
+                # logger.info('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
+                continue
             BankSys.add_edge(rssd_par, rssd_off)
         
         # Adding in the singleton institutions (no edges in Relationships file)
         logger.debug(
-            'System (pre)  as of %s has %s nodes and %s edges',
-            str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges())
+            'System (pre) asof %s has %s nodes and %s edges',
+            asofdate, BankSys.number_of_nodes(), BankSys.number_of_edges())
         indir = config.get('csv2sys', 'indir')
         fA = config.get('csv2sys', 'attributesactive')
         fB = config.get('csv2sys', 'attributesbranch')
         fC = config.get('csv2sys', 'attributesclosed')
-        ATTdf = bhc_datautil.makeATTs(indir, fA, fB, fC, asofdate, filter_asof=True)
-        ATTdf = ATTdf[ATTdf.DT_END >= asofdate]
-        ATTdf = ATTdf[ATTdf.DT_OPEN <= asofdate]
+        ATTdf = bhc_datautil.makeATTs(indir, fA, fB, fC, filter_asofdate=asofdate)
+        ATTdf = ATTdf[ATTdf.DT_END >= int(asofdate)]
+        ATTdf = ATTdf[ATTdf.DT_OPEN <= int(asofdate)]
         nodes_BankSys = set(BankSys.nodes)
         nodes_ATTdf = set(ATTdf['ID_RSSD'].unique())
         nodes_new = nodes_ATTdf.difference(nodes_BankSys)
@@ -205,9 +208,16 @@ def make_banksys(config: ConfigParser, asofdate, logger=logging):
         with open(sysfilepath, 'wb') as f:
             pkl.dump(BankSys, f)
         logger.debug(
-            'System (post) as of %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
-            str(asofdate), BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
+            'System (post) asof %s has %s nodes and %s edges; %s added, out of %s candidates in %s',
+            asofdate, BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
     return BankSys
+
+
+def make_banksys_logged(config: ConfigParser, asofdate: AsOfDate):
+    import logging.config
+    logging.config.fileConfig(config, disable_existing_loggers=False)
+    logger = logging.getLogger("csv2sys")
+    return make_banksys(config, asofdate, logger)
     
 
 def build_sys(config: ConfigParser, logger=logging):
@@ -236,7 +246,7 @@ def build_sys(config: ConfigParser, logger=logging):
         logger.info('Clearing output cache of NIC__YYYYMMDD.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
         clear_cache(config.get('csv2sys', 'outdir'), config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     
-    asof_list = bhc_datautil.assemble_asofs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     logger.debug('List of as-of dates to process: %s Cores: %s %s', asof_list, config.getint('csv2sys', 'parallel'), config.get('csv2sys', 'outdir'))
     if config.getint('csv2sys', 'parallel') > 0:
         logger.info(
@@ -246,7 +256,7 @@ def build_sys(config: ConfigParser, logger=logging):
         pcount = min(config.getint('csv2sys', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(processes=pcount)
         for asof in asof_list:
-            pool.apply_async(make_banksys, (config, asof, logger))
+            pool.apply_async(make_banksys_logged, (config, asof))
         pool.close()
         pool.join()
 
