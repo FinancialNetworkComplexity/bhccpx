@@ -166,25 +166,32 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
         logger.error('Did not find </DATA> end tag in XML file: %s', xmlfilepath)
 
 
-def parse_nic(config, logger=logging):
-    """Parses all five NIC XML files as specified in the config object."""
-    xml_input_files = [
-        config.get('xml2csv', 'attributesactive'),
-        config.get('xml2csv', 'attributesbranch'),
-        config.get('xml2csv', 'attributesclosed'),
-        config.get('xml2csv', 'relationships'),
-        config.get('xml2csv', 'transformations')
-    ]
-    for xfile in xml_input_files:
+def parse_nic(config, xmlfiles: list | None = None, logger=logging):
+    """Parses NIC XML files. If xmlfiles is provided, parse those; otherwise use config defaults."""
+    if not xmlfiles:
+        xmlfiles = [
+            config.get('xml2csv', 'attributesactive'),
+            config.get('xml2csv', 'attributesbranch'),
+            config.get('xml2csv', 'attributesclosed'),
+            config.get('xml2csv', 'relationships'),
+            config.get('xml2csv', 'transformations')
+        ]
+    for xfile in xmlfiles:
         parse_nic_file(config, xfile, logger)
         logger.info('xml2csv conversion for file %s complete', xfile)
 
 
 def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description='Convert NIC XML files to CSV')
+    parser.add_argument('xmlfiles', nargs='*', help='List of XML files to convert (uses config defaults if none provided)')
+    args, remaining = parser.parse_known_args(argv)
+    
     config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    config = bhc_datautil.parse_command_line(remaining, config, __file__)
     logger = logging.getLogger("xml2csv")
-    parse_nic(config, logger)
+    
+    parse_nic(config, args.xmlfiles if args.xmlfiles else None, logger)
 
 
 if __name__ == "__main__":
