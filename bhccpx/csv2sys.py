@@ -29,7 +29,8 @@ import os
 import networkx as nx
 import pickle as pkl
 import multiprocessing as mp
-import progressbar as pb
+from tqdm.auto import tqdm
+import functools
 
 import bhca
 import bhc_datautil
@@ -263,7 +264,7 @@ def build_sys(config: ConfigParser, logger=logging):
         logger.info('Parallel processing complete')
     else:
         logger.info('Beginning sequential processing for each as-of date')
-        for asof in pb.ProgressBar()(asof_list):
+        for asof in tqdm(asof_list, desc="Processing per as-of date"):
              make_banksys(config, asof, logger)
         logger.info('Sequential processing complete')
 

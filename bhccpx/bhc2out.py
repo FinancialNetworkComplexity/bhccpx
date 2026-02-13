@@ -30,7 +30,7 @@ import csv
 
 import pandas as pd
 import graphviz as gv
-import progressbar as pb
+from tqdm.auto import tqdm
 import multiprocessing as mp
 from enum import StrEnum
 import networkx as nx
@@ -89,17 +89,15 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: Co
     metrics = {}
     BHCdict = {}
     logger.info('Creating BHC networks')
-    for rssd, asof in BHCconfigs:
+    for rssd, asof in tqdm(BHCconfigs, desc="BHC-Quarter pairs"):
         BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
-        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
-
+        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
     table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
     table2.columns = cols
     table2['rssd'] = table2['rssd'].astype(int)
     table2.sort_values(['rssd','asofdate'],ascending=[True,True],inplace=True)
-
     logger.debug(table2.iloc[:,2:6])
     logger.debug(table2.iloc[:,6:14])
     logger.debug(table2.iloc[:,14:22])
@@ -318,9 +316,9 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
         logger.debug('Parallel processing complete')
     else:
         logger.info('Beginning sequential processing for each asofdate')
-        results = {}
-        for asofdate in pb.progressbar(asof_list, redirect_stdout=True):
-            results[asofdate] = all_bhc_complex(config, asofdate, logger)
+        results = []
+        for asofdate in tqdm(asof_list, desc="Processing per as-of date"):
+            results.append(all_bhc_complex(config, asofdate, logger))
         logger.debug('Sequential processing complete')
     
     panelfilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'panel_filename'))
