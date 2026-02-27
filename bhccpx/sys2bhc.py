@@ -88,7 +88,7 @@ def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph, logger=
                 'entity_type': 'XXX',
                 'GEO_JURISD': 'XXX'
             }
-            logger.warning('Node %s not found in attributes dataframe, assigning default attributes', node_id)
+            logger.debug('Node %s not found in attributes dataframe, assigning default attributes', node_id)
         nx.set_node_attributes(BHC, {node: node_dict})
     return BHC
 
@@ -293,7 +293,7 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate, logger=logging
     BankSys = csv2sys.make_banksys(config, asofdate, logger)
 
     BHCs = []
-    for rssd in tqdm(rssd_lst, file=sys.stdout, leave=False):
+    for rssd in rssd_lst:
         BHC = extractBHC(config, asofdate, rssd, DATA, BankSys, logger=logger)
         BHCs.append(BHC)
     return BHCs
@@ -317,8 +317,11 @@ def make_bhcs(config: ConfigParser, logger=logging):
             str(len(asof_list)), config.getint('sys2bhc', 'parallel'))
         pcount = min(config.getint('sys2bhc', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(pcount)
-        for asofdate in asof_list:
-            pool.apply_async(extract_bhcs_ondate, (config, asofdate, logger))
+        results = [pool.apply_async(extract_bhcs_ondate, (config, asof, logger)) for asof in asof_list]
+        with tqdm(total=len(results), desc="Parallel processing for each asofdate") as pbar:
+            for r in results:
+                r.wait()
+                pbar.update(1)
         pool.close()
         pool.join()
         logger.info('Parallel processing complete')

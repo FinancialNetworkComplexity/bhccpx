@@ -233,7 +233,7 @@ class Usage(Exception):
 
 
 
-def read_config(config_file='BHCCPX.ini'):
+def read_config(config_file=os.path.join(os.path.dirname(__file__), 'BHCCPX.ini')):
     """Reads the application configuration from the BHCCPX.ini file"""
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
@@ -495,7 +495,7 @@ def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
         failasof = AsOfDate.most_recent(failasof.year, failasof.month)
         if rcntasof != failasof:
             rcntasof = failasof
-            sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pkl'
+            sysfilename = 'NIC_'+str(rcntasof)+'.pkl'
             sysfilepath = os.path.join(outdir, sysfilename)
             with open(sysfilepath, 'rb') as f:
                 BankSys = pkl.load(f)

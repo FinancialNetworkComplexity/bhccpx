@@ -92,7 +92,7 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: Co
     for rssd, asof in tqdm(BHCconfigs, desc="BHC-Quarter pairs"):
         BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
-        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
+        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
     table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
     table2.columns = cols
