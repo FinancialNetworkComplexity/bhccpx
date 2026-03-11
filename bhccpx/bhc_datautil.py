@@ -28,11 +28,9 @@ import sys
 import os
 import logging.config as logcfg
 import logging
-
 import numpy as np 
 import pandas as pd
 import configparser as cp
-import json
 import pickle as pkl
 from dataclasses import dataclass
 from functools import total_ordering
@@ -233,7 +231,7 @@ class Usage(Exception):
 
 
 
-def read_config(config_file='BHCCPX.ini'):
+def read_config(config_file=os.path.join(os.path.dirname(__file__), 'BHCCPX.ini')):
     """Reads the application configuration from the BHCCPX.ini file"""
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
@@ -242,7 +240,7 @@ def read_config(config_file='BHCCPX.ini'):
     log_dir = log_dir.split(sep="'")[1]
     log_dir = os.path.split(log_dir)[0]
     os.makedirs(log_dir, exist_ok=True)
-    logcfg.fileConfig(config_file)
+    logcfg.fileConfig(config)
     return config
 
 
@@ -495,7 +493,7 @@ def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
         failasof = AsOfDate.most_recent(failasof.year, failasof.month)
         if rcntasof != failasof:
             rcntasof = failasof
-            sysfilename = 'NIC_'+'_'+str(rcntasof)+'.pkl'
+            sysfilename = 'NIC_'+str(rcntasof)+'.pkl'
             sysfilepath = os.path.join(outdir, sysfilename)
             with open(sysfilepath, 'rb') as f:
                 BankSys = pkl.load(f)

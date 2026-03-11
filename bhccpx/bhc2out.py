@@ -27,17 +27,14 @@ import ast
 from configparser import ConfigParser
 import os
 import csv
-
 import pandas as pd
 import graphviz as gv
 from tqdm.auto import tqdm
 import multiprocessing as mp
 from enum import StrEnum
 import networkx as nx
-import pickle as pkl
 import logging
 from logging import Logger
-
 import bhc_datautil
 from bhc_datautil import AsOfDate
 import csv2sys
@@ -92,7 +89,7 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: Co
     for rssd, asof in tqdm(BHCconfigs, desc="BHC-Quarter pairs"):
         BHC = sys2bhc.extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
-        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, asof] + list(metrics.values())
+        BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
     table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
     table2.columns = cols
