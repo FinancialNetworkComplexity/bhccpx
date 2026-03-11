@@ -24,20 +24,14 @@
 # -----------------------------------------------------------------------------
 
 import os
-
-#import pandas as pd
 import networkx as nx
 import pickle as pkl
 import multiprocessing as mp
 from tqdm.auto import tqdm
-import functools
-
-import bhca
+from configparser import ConfigParser
+import logging
 import bhc_datautil
 from bhc_datautil import AsOfDate
-from configparser import ConfigParser
-
-import logging
 
 
 def clear_cache(cachedir: str, YQ0: str, YQ1: str):
@@ -184,7 +178,7 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
             rssd_par = row[0][ID_RSSD_PARENT]
             rssd_off = row[0][ID_RSSD_OFFSPRING]
             if asofdate < date0 or asofdate > date1:
-                # logger.info('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
+                # logger.debug('ASOFDATE, %s out of bounds: %s %s %s %s', asofdate, rssd_par, rssd_off, date0, date1)
                 continue
             BankSys.add_edge(rssd_par, rssd_off)
         

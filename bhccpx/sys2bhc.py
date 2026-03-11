@@ -32,11 +32,10 @@ from configparser import ConfigParser
 import pickle as pkl
 import ast
 import sys
-
+import logging
 import bhc_datautil
 from bhc_datautil import NICData, AsOfDate
 import csv2sys
-import logging
 
 
 def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph, logger=logging) -> nx.DiGraph:
@@ -203,7 +202,7 @@ def extractBHC(
         BHC = populate_bhc(config, BankSys, DATA, rssd, logger)
         logger.debug('BHC: %s %s %s %s', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
-            logger.warning("RSSD=%s has no legal name, skipping", rssd)
+            logger.debug("RSSD=%s has no legal name, skipping", rssd)
             return
         with open(bhcfilepath, 'wb') as f:
             pkl.dump(BHC, f)

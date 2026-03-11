@@ -28,11 +28,9 @@ import sys
 import os
 import logging.config as logcfg
 import logging
-
 import numpy as np 
 import pandas as pd
 import configparser as cp
-import json
 import pickle as pkl
 from dataclasses import dataclass
 from functools import total_ordering
@@ -242,7 +240,7 @@ def read_config(config_file=os.path.join(os.path.dirname(__file__), 'BHCCPX.ini'
     log_dir = log_dir.split(sep="'")[1]
     log_dir = os.path.split(log_dir)[0]
     os.makedirs(log_dir, exist_ok=True)
-    logcfg.fileConfig(config_file)
+    logcfg.fileConfig(config)
     return config
 
 
