@@ -177,6 +177,12 @@ def parse_nic(config, xmlfiles: list | None = None, logger=logging):
         logger.info('xml2csv conversion for file %s complete', xfile)
 
 
+def process(config, *xmlfiles, logger=None):
+    if logger is None:
+        logger = logging.getLogger("xml2csv")
+    parse_nic(config, list(xmlfiles) if xmlfiles else None, logger)
+
+
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description='Convert NIC XML files to CSV')
@@ -185,9 +191,8 @@ def main(argv=None):
     
     config = bhc_datautil.read_config()
     config = bhc_datautil.parse_command_line(remaining, config, __file__)
-    logger = logging.getLogger("xml2csv")
     
-    parse_nic(config, args.xmlfiles if args.xmlfiles else None, logger)
+    process(config, *args.xmlfiles)
 
 
 if __name__ == "__main__":
