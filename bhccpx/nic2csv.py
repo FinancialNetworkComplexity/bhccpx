@@ -39,14 +39,21 @@ def process_files(zipfiles: list[str], config: ConfigParser, logger: logging):
 				xml2csv.parse_nic_file(config, extracted_file, logger)
 
 
+def process(config, *zipfiles, logger=None):
+	if logger is None:
+		logger = logging.getLogger("www2csv")
+	
+	if zipfiles:
+		process_files(list(zipfiles), config, logger)
+	else:
+		logger.warning("No zipfiles provided to nic2csv process")
+
 def main():
 	parser = argparse.ArgumentParser(description='Extract CSV or XML files from zip archives')
 	parser.add_argument('zipfiles', nargs='+', help='List of zip files to process')
 	args = parser.parse_args()
 	config = bhc_datautil.read_config()
-	logger = logging.getLogger("www2csv")
-
-	process_files(args.zipfiles, config, logger)
+	process(config, *args.zipfiles)
 
 if __name__ == '__main__':
 	main()

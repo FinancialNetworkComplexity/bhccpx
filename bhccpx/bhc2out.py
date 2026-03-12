@@ -361,16 +361,14 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, logger=logging):
     return BHCs
 
 
-# The main function controls execution when running from the command line
-def main(argv=None):
-    config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
-    logger = logging.getLogger("bhc2out")
+def process(config, logger=None):
+    if logger is None:
+        logger = logging.getLogger("bhc2out")
     
-    if config.getboolean('bhc2out', 'make_panel'):
-        make_panel(config)
+    if config.getboolean('bhc2out', 'make_panel', fallback=False):
+        make_panel(config, logger=logger)
     
-    if config.getboolean('bhc2out', 'make_wachwells_comparison'):
+    if config.getboolean('bhc2out', 'make_wachwells_comparison', fallback=False):
         # Default configs to run
         # RSSD 1073551 is Wachovia Corp.
         # RSSD 1120754 is Wells Fargo & Co.
@@ -383,7 +381,12 @@ def main(argv=None):
             (1120754,20101231)
         ]
         make_wachwells_comparison(BHCconfigs, config, logger=logger)
-    
+
+# The main function controls execution when running from the command line
+def main(argv=None):
+    config = bhc_datautil.read_config()
+    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    process(config)
     
 if __name__ == "__main__":
     # import doctest

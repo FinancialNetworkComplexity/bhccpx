@@ -266,11 +266,15 @@ def build_sys(config: ConfigParser, logger=logging):
         logger.info('Sequential processing complete')
 
 
+def process(config, logger=None):
+    if logger is None:
+        logger = logging.getLogger("csv2sys")
+    build_sys(config, logger)
+
 def main(argv=None):
     config = bhc_datautil.read_config()
     config = bhc_datautil.parse_command_line(argv, config, __file__)
-    logger = logging.getLogger("csv2sys")
-    build_sys(config, logger)
+    process(config)
     
 if __name__ == "__main__":
     main()
