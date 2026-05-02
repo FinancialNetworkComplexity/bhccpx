@@ -1,7 +1,7 @@
-bhc\_util module
+bhc\_datautil module
 ====================
 
-.. automodule:: bhc_util
+.. automodule:: bhc_datautil
     :members:
     :undoc-members:
     :show-inheritance:

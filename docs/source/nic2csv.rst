@@ -1,7 +1,7 @@
-zip2xml module
+nic2csv module
 ==============
 
-.. automodule:: zip2xml
+.. automodule:: nic2csv
     :members:
     :undoc-members:
     :show-inheritance:
