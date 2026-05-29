@@ -1,4 +1,5 @@
 import os
+import glob
 import argparse
 from configparser import ConfigParser
 import zipfile
@@ -6,8 +7,10 @@ import logging
 import bhc_datautil
 import xml2csv
 
+logger = logging.getLogger("nic2csv")
 
-def extract_files_from_zip(zip_path, extract_to, logger=logging) -> list[str]:
+
+def extract_files_from_zip(zip_path, extract_to) -> list[str]:
 	"""Extract all csv and xml files from zip archive and return list of extracted files."""
 	extracted_files = []
 	with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -21,30 +24,29 @@ def extract_files_from_zip(zip_path, extract_to, logger=logging) -> list[str]:
 	return extracted_files
 
 
-def process_files(zipfiles: list[str], config: ConfigParser, logger: logging):
+def process_files(zipfiles: list[str], config: ConfigParser):
 	"""Extract files from zip archives and convert XML->CSV if needed"""
 	for zip_filename in zipfiles:
 		if os.path.isabs(zip_filename):
-			zip_path = zip_filename
+			zip_path_pattern = zip_filename
 		else:
-			zip_path = os.path.join(config.get('DEFAULT', 'datadir'), zip_filename)
+			zip_path_pattern = os.path.join(config.get('DEFAULT', 'datadir'), zip_filename)
 		
-		if not os.path.exists(zip_path):
-			logger.warning('Zip file not found: %s', zip_path)
+		matches = glob.glob(zip_path_pattern)
+		if not matches:
+			logger.warning('Zip file not found: %s', zip_path_pattern)
 			continue
 			
-		extracted_files = extract_files_from_zip(zip_path, config.get('DEFAULT', 'datadir'), logger)
-		for extracted_file in extracted_files:
-			if extracted_file.lower().endswith('.xml'):
-				xml2csv.parse_nic_file(config, extracted_file, logger)
+		for zip_path in matches:
+			extracted_files = extract_files_from_zip(zip_path, config.get('DEFAULT', 'datadir'))
+			for extracted_file in extracted_files:
+				if extracted_file.lower().endswith('.xml'):
+					xml2csv.parse_nic_file(config, extracted_file)
 
 
-def process(config, *zipfiles, logger=None):
-	if logger is None:
-		logger = logging.getLogger("www2csv")
-	
+def process(config, *zipfiles: str):
 	if zipfiles:
-		process_files(list(zipfiles), config, logger)
+		process_files(list(zipfiles), config)
 	else:
 		logger.warning("No zipfiles provided to nic2csv process")
 

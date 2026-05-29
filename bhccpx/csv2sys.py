@@ -33,6 +33,8 @@ import logging
 import bhc_datautil
 from bhc_datautil import AsOfDate
 
+logger = logging.getLogger("csv2sys")
+
 
 def clear_cache(cachedir: str, YQ0: str, YQ1: str):
     """
@@ -58,7 +60,6 @@ def clear_cache(cachedir: str, YQ0: str, YQ1: str):
 def find_highholders(
     config: ConfigParser, BankSys: nx.DiGraph,
     rssd: int | None, hc_types: list[str] | None = None,
-    logger=logging
 ) -> list[int]:
     """
     Finds an entity's high-holder within a banking system.
@@ -83,7 +84,7 @@ def find_highholders(
               multiple high holders are found)
     :rtype: int
 
-    .. Examples::
+    Examples:
 
     The examples work with a simple banking system containing two BHCs, 
     each organized as a simple DAG tree containing seven nodes: 
@@ -129,7 +130,7 @@ def find_highholders(
     return HHs
 
 
-def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
+def make_banksys(config: ConfigParser, asofdate: AsOfDate):
     """
     Read or create a NetworkX graph of a full banking system on a given date.
     If a pickle file for this banking system exists, it will load and return it.
@@ -141,8 +142,6 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
     :type config: ConfigParser
     :param asofdate: Date for which to build/load the banking system
     :type asofdate: AsOfDate
-    :param logger: Logger instance for debugging and info messages
-    :type logger: logging.Logger, optional
     :returns: Directed graph representing the banking system hierarchy
     :rtype: networkx.DiGraph
     :raises: FileNotFoundError if required CSV files are not found
@@ -151,8 +150,6 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
     .. note::
         The function creates pickle files in the format 'NIC_YYYYMMDD.pkl' for caching.
     """
-    if logger is None:
-        logger = logging.getLogger("csv2sys")
 
     sysfilename = 'NIC_'+str(asofdate)+'.pkl'
     sysfilepath = os.path.join(config.get('csv2sys', 'outdir'), sysfilename)
@@ -207,22 +204,16 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate, logger=None):
             asofdate, BankSys.number_of_nodes(), BankSys.number_of_edges(), len(nodes_new), len(nodes_ATTdf), type(ATTdf))
     return BankSys
 
-
-def make_banksys_logged(config: ConfigParser, asofdate: AsOfDate):
-    import logging.config
-    logging.config.fileConfig(config, disable_existing_loggers=False)
-    logger = logging.getLogger("csv2sys")
-    return make_banksys(config, asofdate, logger)
     
 
-def build_sys(config: ConfigParser, logger=logging):
+def build_sys(config: ConfigParser):
     """
     Builds a representation of the full banking system for specified dates.
     Processing can be done either sequentially or in parallel.
     
     :param config: Configuration parser containing processing parameters. The 'csv2sys' section should contain:
                    
-                   - clearcache (bool): Whether to clear existing *.pkl cache files
+                   - clearcache (bool): Whether to clear existing \*.pkl cache files
                    - asofdate0 (str): Start date for processing range
                    - asofdate1 (str): End date for processing range  
                    - outdir (str): Output directory path for generated files
@@ -250,7 +241,7 @@ def build_sys(config: ConfigParser, logger=logging):
         
         pcount = min(config.getint('csv2sys', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(processes=pcount)
-        results = [pool.apply_async(make_banksys_logged, (config, asof)) for asof in asof_list]
+        results = [pool.apply_async(make_banksys, (config, asof)) for asof in asof_list]
         with tqdm(total=len(results), desc="Parallel processing per as-of date") as pbar:
             for r in results:
                 r.wait()
@@ -262,14 +253,12 @@ def build_sys(config: ConfigParser, logger=logging):
     else:
         logger.info('Beginning sequential processing for each as-of date')
         for asof in tqdm(asof_list, desc="Processing per as-of date"):
-             make_banksys(config, asof, logger)
+             make_banksys(config, asof)
         logger.info('Sequential processing complete')
 
 
-def process(config, logger=None):
-    if logger is None:
-        logger = logging.getLogger("csv2sys")
-    build_sys(config, logger)
+def process(config):
+    build_sys(config)
 
 def main(argv=None):
     config = bhc_datautil.read_config()

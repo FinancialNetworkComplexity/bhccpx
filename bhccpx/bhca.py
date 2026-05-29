@@ -30,6 +30,8 @@ import itertools
 import logging
 import re
 
+logger = logging.getLogger("bhca")
+
 
 class QType(Enum):
     FULL = 1
@@ -58,7 +60,7 @@ def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
     :returns: A set containing all of the unique labels in BHC for the given dimen
     :rtype: list
 
-    .. Examples::
+    Examples:
 
     Setting up a BHC graph with known node attributes::
 
@@ -127,7 +129,7 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     :returns: The calculated quotient graph (undirected)
     :rtype: undirected networkx.MultiGraph or networkx.Graph (if condensed)
 
-    .. Examples::
+    Examples:
 
     Setting up a BHC graph with known node attributes::
 
@@ -208,7 +210,7 @@ def node_equals(u, v, G: nx.DiGraph, dimen: str):
     :returns: Whether u and v are equal in G for the attribute dimension (dimen)
     :rtype: bool
 
-    .. Examples::
+    Examples:
 
     Setting up a BHC graph with known node attributes::
 
@@ -336,7 +338,7 @@ def number_of_components(BHC: nx.DiGraph):
     :returns: Components in the projection of BHC to a simple undirected graph
     :rtype: int
 
-    .. Examples::
+    Examples:
 
     Start with a simple DAG, all in one component
 
@@ -371,7 +373,7 @@ def edge_count(BHC: nx.DiGraph):
     :returns: Count of edges in the projection of BHC to a simple undirected graph
     :rtype: int
 
-    .. Examples::
+    Examples:
 
     The count for a simple directed tree, with 7 nodes and 6 edges
 
@@ -420,7 +422,7 @@ def aggregate_weight(BHC: nx.DiGraph, weights: dict[Any, int]):
     return rv
 
 
-def check_lei(lei: str, logger=logging):
+def check_lei(lei: str):
     """Verify the checksum on a candidate Legal Entity Identifier (LEI).
 
     Under international standard ISO/CD 17442, LEIs may be issued for
@@ -443,10 +445,12 @@ def check_lei(lei: str, logger=logging):
         * If syntax flaws prevent calculation of a checksum, -1 is returned
         * If the candidate LEI is syntax-valid but fails the checksum,
           a positive value other than 1 is returned
+
     For the list of error codes:
         This list indicates syntax flaws in the candidate LEI. Note that
         valid syntax is necessary but not sufficient for a valid LEI. If the error
         list is empty, no syntax errors were detected. Possible syntax errors are:
+        
         1. LEI value is too long
         2. LEI value is too short
         3. LEI value is not uppercase
@@ -454,7 +458,7 @@ def check_lei(lei: str, logger=logging):
             ``[0-9A-Z]{18}[0-9]{2}``
         5. LEI checkdigits are in the invalid range [00, 01, 99]
 
-    .. Examples::
+    Examples:
 
     Applying this function to variations on a particular LEI. For example,
     the actual (valid) LEI for Citigroup is: ``6SHGI4ZSSLCXXQSBB395``
