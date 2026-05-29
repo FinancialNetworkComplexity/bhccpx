@@ -37,8 +37,10 @@ import bhc_datautil
 from bhc_datautil import NICData, AsOfDate
 import csv2sys
 
+logger = logging.getLogger("sys2bhc")
 
-def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph, logger=logging) -> nx.DiGraph:
+
+def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
     """
     Decorate a BHC graph with important attributes from NIC data.
     For each entity in the BHC graph, we look up relevant attributes from the DATA object
@@ -58,8 +60,6 @@ def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph, logger=
     :type DATA: NICData
     :param BHC: Bare NetworkX directed graph representing the firm structure without attributes
     :type BHC: nx.DiGraph
-    :param logger: Logger instance for debugging and info messages
-    :type logger: logging.Logger, optional
     :returns: Enhanced NetworkX directed graph with node attributes added
     :rtype: nx.DiGraph
 
@@ -136,7 +136,7 @@ def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.
 def extractBHC(
     config: ConfigParser, asofdate: AsOfDate, rssd: int,
     DATA: NICData | None = None, BankSys: nx.DiGraph | None = None,
-    use_cache: bool = True, logger=logging
+    use_cache: bool = True
 ) -> nx.DiGraph | None:
     """
     This function extracts a single BHC graph from a full banking system
@@ -150,8 +150,6 @@ def extractBHC(
     :type DATA: NICData
     :param BankSys: Full banking system graph, optional. Will generate if not provided.
     :type BankSys: nx.DiGraph or None, default None
-    :param logger: Logger instance for debugging and warnings
-    :type logger: logging.Logger, default logging
     :returns: Extracted and decorated BHC graph, or None if extraction fails
     :rtype: nx.DiGraph or None
     
@@ -183,7 +181,7 @@ def extractBHC(
             return pkl.load(f)
 
     if BankSys is None:
-        BankSys = csv2sys.make_banksys(config, asofdate, logger)
+        BankSys = csv2sys.make_banksys(config, asofdate)
     if DATA is None:
         logger.debug('Fetching DATA (not provided)')
         DATA = bhc_datautil.fetch_DATA(
@@ -194,12 +192,11 @@ def extractBHC(
             fB=config.get('sys2bhc', 'attributesbranch'),
             fC=config.get('sys2bhc', 'attributesclosed'),
             fREL=config.get('sys2bhc', 'relationships'),
-            logger=logger
         )
 
     highholders = DATA.highholders
     if rssd in highholders:
-        BHC = populate_bhc(config, BankSys, DATA, rssd, logger)
+        BHC = populate_bhc(config, BankSys, DATA, rssd)
         logger.debug('BHC: %s %s %s %s', rssd, type(BHC), BHC.number_of_nodes(), BHC.number_of_edges())
         if 'nm_lgl' not in BHC.nodes(data=True)[rssd]:
             logger.debug("RSSD=%s has no legal name, skipping", rssd)
@@ -215,7 +212,7 @@ def extractBHC(
     return BHC
 
 
-def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd, logger=logging) -> nx.DiGraph:
+def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd) -> nx.DiGraph:
     """
     This function extract a BHC subgraph from a banking system graph, adds relevant attributes,
     optionally removed branches, and returns a directed graph containing the BHC.
@@ -228,23 +225,21 @@ def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd,
     :type DATA: NICData
     :param rssd: Root RSSD identifier of the holding company to extract
     :type rssd: str or int
-    :param logger: Logger instance for recording processing information
-    :type logger: logging module, optional
     :returns: Directed graph representing the BHC structure with all descendants of the
               specified RSSD, including added attributes and optional branch removal
     :rtype: nx.DiGraph
 
     .. note::
-    - The function includes the root RSSD (holding company) itself in the BHC graph
-    - Branch removal is controlled by the 'usebranches' configuration setting
-    - The returned graph is always converted to a directed graph format
+        - The function includes the root RSSD (holding company) itself in the BHC graph
+        - Branch removal is controlled by the 'usebranches' configuration setting
+        - The returned graph is always converted to a directed graph format
     """
 
     usebranches = config.getboolean('sys2bhc', 'usebranches')
     bhc_entities = nx.algorithms.dag.descendants(BankSys, rssd)
     bhc_entities.add(rssd)  # Include HH in the BHC too
     BHC = BankSys.subgraph(bhc_entities)
-    BHC = add_attributes(config, DATA, BHC, logger)
+    BHC = add_attributes(config, DATA, BHC)
     if not usebranches:
         logger.info(f"Removing branches ({usebranches=}) for high-holder: {rssd}")
         BHC = remove_branches(config, DATA, BHC)
@@ -270,7 +265,7 @@ def clear_cache(cachedir: str, asof_list: list[AsOfDate]):
             os.remove(filepath)
 
 
-def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate, logger=logging) -> list[nx.DiGraph | None]:
+def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiGraph | None]:
     """
     Loop over all RSSD IDs in the bhclist (in config), loading or creating 
     a cached pik file for each on the asofdate. 
@@ -284,20 +279,19 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate, logger=logging
         fB=config.get('sys2bhc', 'attributesbranch'),
         fC=config.get('sys2bhc', 'attributesclosed'),
         fREL=config.get('sys2bhc', 'relationships'),
-        logger=logger
     )
     rssd_lst: list[int] | None = ast.literal_eval(config.get('sys2bhc', 'bhclist'))
     if rssd_lst is None:
         rssd_lst: list[int] = sorted(list(DATA.highholders))
-    BankSys = csv2sys.make_banksys(config, asofdate, logger)
+    BankSys = csv2sys.make_banksys(config, asofdate)
 
     BHCs = []
     for rssd in rssd_lst:
-        BHC = extractBHC(config, asofdate, rssd, DATA, BankSys, logger=logger)
+        BHC = extractBHC(config, asofdate, rssd, DATA, BankSys)
         BHCs.append(BHC)
     return BHCs
 
-def make_bhcs(config: ConfigParser, logger=logging):
+def make_bhcs(config: ConfigParser):
     """
     Loop over all dates in the asoflist (in config). For each date, extract
     all the BHCs in the bhclist.
@@ -316,7 +310,7 @@ def make_bhcs(config: ConfigParser, logger=logging):
             str(len(asof_list)), config.getint('sys2bhc', 'parallel'))
         pcount = min(config.getint('sys2bhc', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(pcount)
-        results = [pool.apply_async(extract_bhcs_ondate, (config, asof, logger)) for asof in asof_list]
+        results = [pool.apply_async(extract_bhcs_ondate, (config, asof)) for asof in asof_list]
         with tqdm(total=len(results), desc="Parallel processing for each asofdate") as pbar:
             for r in results:
                 r.wait()
@@ -327,14 +321,12 @@ def make_bhcs(config: ConfigParser, logger=logging):
     else:
         logger.info('Beginning sequential processing for each asofdate')
         for asof in tqdm(asof_list, file=sys.stdout):
-            extract_bhcs_ondate(config, asof, logger=logger)
+            extract_bhcs_ondate(config, asof)
         logger.info('Sequential processing complete')
 
 
-def process(config, logger=None):
-    if logger is None:
-        logger = logging.getLogger("sys2bhc")
-    make_bhcs(config, logger=logger)
+def process(config):
+    make_bhcs(config)
 
 def main(argv=None):
     config = bhc_datautil.read_config()

@@ -35,6 +35,8 @@ import pickle as pkl
 from dataclasses import dataclass
 from functools import total_ordering
 
+logger = logging.getLogger("bhc_datautil")
+
 
 @total_ordering
 @dataclass
@@ -125,7 +127,7 @@ class AsOfDate:
         return AsOfDate.from_YQ(year, ((month - 1) // 3) + 1)
     
     @staticmethod
-    def make_range(d0: 'AsOfDate', d1: 'AsOfDate', logger=logging) -> list['AsOfDate']:
+    def make_range(d0: 'AsOfDate', d1: 'AsOfDate') -> list['AsOfDate']:
         asofs = []
         if d0 > d1:
             logger.error('End date, %s, precedes start date, %s', d0, d1)
@@ -147,9 +149,9 @@ class AsOfDate:
         return asofs
 
     @staticmethod
-    def make_range_from_YQ_strs(d0_str: str, d1_str: str, logger=logging) -> list['AsOfDate']:
+    def make_range_from_YQ_strs(d0_str: str, d1_str: str) -> list['AsOfDate']:
         d0, d1 = AsOfDate.from_YQ_str(d0_str), AsOfDate.from_YQ_str(d1_str)
-        return AsOfDate.make_range(d0, d1, logger=logger)
+        return AsOfDate.make_range(d0, d1)
 
 
 @dataclass
@@ -240,7 +242,7 @@ def read_config(config_file=os.path.join(os.path.dirname(__file__), 'BHCCPX.ini'
     log_dir = log_dir.split(sep="'")[1]
     log_dir = os.path.split(log_dir)[0]
     os.makedirs(log_dir, exist_ok=True)
-    logcfg.fileConfig(config)
+    logcfg.fileConfig(config, disable_existing_loggers=False)
     return config
 
 
@@ -281,6 +283,7 @@ def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) 
     :type nicsource: str
     :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
     :type filter_asofdate: AsOfDate | None
+    
     :return: A Pandas DataFrame indexed on ID_RSSD, with an additional 'NICsource' column.
     :rtype: pd.DataFrame
     """
@@ -512,12 +515,12 @@ def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
     return FAILdf2
 
 
-def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDate, logger=logging) -> NICData:
+def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDate) -> NICData:
     """A function to assemble the NIC data for given asofdate into a single object."""
     ATTdf = makeATTs(indir, file_attA, file_attB, file_attC)
     csvfilepathR = os.path.join(indir, file_rel)
     RELdf = RELcsv2df(csvfilepathR)
-    highholders, entities, parents, offspring = NIC_highholders(RELdf, asofdate, logger=logger)
+    highholders, entities, parents, offspring = NIC_highholders(RELdf, asofdate)
     return NICData(
         attributes=ATTdf,
         relationships=RELdf,
@@ -528,7 +531,7 @@ def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDat
     )
 
 
-def makeATTs(indir, file_attA, file_attB, file_attC, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
+def makeATTs(indir: str, file_attA: str, file_attB: str, file_attC: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     csvfilepathA = os.path.join(indir, file_attA)
     csvfilepathB = os.path.join(indir, file_attB)
     csvfilepathC = os.path.join(indir, file_attC)
@@ -539,7 +542,10 @@ def makeATTs(indir, file_attA, file_attB, file_attC, filter_asofdate: AsOfDate |
     return ATTdf
 
 
-def fetch_DATA(outdir, asofdate: AsOfDate, indir=None, fA=None, fB=None, fC=None, fREL=None, logger=logging) -> NICData:
+def fetch_DATA(
+    outdir: str, asofdate: AsOfDate, indir: str | None = None,
+    fA: str | None = None, fB: str | None = None, fC: str | None = None, fREL: str | None = None
+) -> NICData:
     DATA = None
     datafilename = f"DATA_{asofdate}.pkl"
     datafilepath = os.path.join(outdir, datafilename)
@@ -548,13 +554,13 @@ def fetch_DATA(outdir, asofdate: AsOfDate, indir=None, fA=None, fB=None, fC=None
         with open(datafilepath, 'rb') as f:
             DATA: NICData = pkl.load(f)
     elif not nonefiles:
-        DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate, logger=logger)
+        DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate)
         with open(datafilepath, 'wb') as f:
             pkl.dump(DATA, f)
     return DATA
 
 
-def NIC_highholders(RELdf, asofdate: AsOfDate, logger=logging) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]:
+def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict[int, set[int]], dict[int, set[int]]]:
     """
     A function to walk through the rows of the relationships dataframe,
     creating four key derived objects:
@@ -574,14 +580,14 @@ def NIC_highholders(RELdf, asofdate: AsOfDate, logger=logging) -> tuple[set[int]
     :param asofdate: The as-of date for which the relationships are valid
     :type asofdate: AsOfDate
     :return: A tuple containing (high_holders, entities, parents, offspring)
-    :rtype: tuple[set[int], dict[int, set[int]], dict[int, set[int]], set[int]]
+    :rtype: tuple[set[int], set[int], dict[int, set[int]], dict[int, set[int]]]
     """
     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
     # Create some containers for derived structures
-    parents = {}     # Dictionary of immediate parents (a set) for each node
-    offspring = {}   # Dictionary of immediate children (a set) for each node
-    entities = set()
-    high_holders = set()
+    parents: dict[int, set[int]] = {}     # Dictionary of immediate parents (a set) for each node
+    offspring: dict[int, set[int]] = {}   # Dictionary of immediate children (a set) for each node
+    entities: set[int] = set()
+    high_holders: set[int] = set()
     # Loop through Relationships to assemble entities, parents, and offspring
     for row in RELdf.iterrows():
         date0 = AsOfDate.from_int(row[0][DT_START])

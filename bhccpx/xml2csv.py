@@ -33,6 +33,8 @@ from io import TextIOWrapper
 import ast
 import bhc_datautil
 
+logger = logging.getLogger('xml2csv')
+
 
 def write_head(config: ConfigParser, outfile: TextIOWrapper, template):
     """ Writes the header row in the CSV output file."""
@@ -43,7 +45,7 @@ def write_head(config: ConfigParser, outfile: TextIOWrapper, template):
     outfile.write(delim.join(template) + '\n')
     
 
-def write_elem(config: ConfigParser, elem, outfile: TextIOWrapper, template, logger=logging):
+def write_elem(config: ConfigParser, elem, outfile: TextIOWrapper, template):
     """Writes an individual observation (elem) row in the CSV output file."""
     if config.get('xml2csv', 'delim') == '<TAB>':
         delim = '\t' 
@@ -82,19 +84,19 @@ def write_elem(config: ConfigParser, elem, outfile: TextIOWrapper, template, log
     outfile.write(delim.join(['' if keyvals[k] is None else keyvals[k] for k in template]) + '\n')
 
 
-def get_template(config: ConfigParser, xmlfilepath: str) -> tuple[str, str]:
+def get_template(config: ConfigParser, xmlfilepath: str) -> tuple[str, list[str]]:
     """Inspect the XML file to find the element type; return it and obtain the template"""
     with open(xmlfilepath, 'r') as infile:
         chunk = infile.read(1024).upper()
     if chunk.find('<ATTRIBUTES') >= 0:
         elemtype = 'ATTRIBUTES'
-        template = ast.literal_eval(config.get('xml2csv', 'attributestemplate'))
+        template: list[str] = ast.literal_eval(config.get('xml2csv', 'attributestemplate'))
     elif chunk.find('<RELATIONSHIP') >= 0:
         elemtype = 'RELATIONSHIP'
-        template = ast.literal_eval(config.get('xml2csv', 'relationshipstemplate'))
+        template: list[str] = ast.literal_eval(config.get('xml2csv', 'relationshipstemplate'))
     elif chunk.find('<TRANSFORMATION') >= 0:
         elemtype = 'TRANSFORMATION'
-        template = ast.literal_eval(config.get('xml2csv', 'transformationstemplate'))
+        template: list[str] = ast.literal_eval(config.get('xml2csv', 'transformationstemplate'))
     else:
         raise Exception('XML data in file %s not recognized as any of: ATTRIBUTES, RELATIONSHIP, TRANSFORMATION', xmlfilepath)
     return elemtype, template
@@ -102,16 +104,16 @@ def get_template(config: ConfigParser, xmlfilepath: str) -> tuple[str, str]:
 
 def clean_and_write_elem(
     config: ConfigParser, elem: str, template: list[str],
-    outfile: TextIOWrapper, logger=logging
+    outfile: TextIOWrapper
 ):
     """Cleans the XML element and writes it to the CSV output file."""
     elem = elem.replace('&AMP;', '&')
     elem = elem.replace('&LT;', '<')
     elem = elem.replace('&GT;', '>')
-    write_elem(config, elem, outfile, template, logger)
+    write_elem(config, elem, outfile, template)
 
 
-def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
+def parse_nic_file(config: ConfigParser, xmlfilename: str):
     xmlfilepath = os.path.join(config.get('xml2csv', 'indir'), xmlfilename)
     chunksize = config.getint('xml2csv', 'chunksize')
     elemtype, template = get_template(config, xmlfilepath)
@@ -151,7 +153,7 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
                     if needs_csv_head:
                         write_head(config, outfile, template)
                         needs_csv_head = False
-                    clean_and_write_elem(config, elem, template, outfile, logger)
+                    clean_and_write_elem(config, elem, template, outfile)
                 
                 # When we find the XML end tag (</DATA>), shut things down
                 if chunk.upper().find('</DATA>') >= 0:
@@ -162,7 +164,7 @@ def parse_nic_file(config: ConfigParser, xmlfilename: str, logger=logging):
         logger.error('Did not find </DATA> end tag in XML file: %s', xmlfilepath)
 
 
-def parse_nic(config, xmlfiles: list | None = None, logger=logging):
+def parse_nic(config, xmlfiles: list | None = None):
     """Parses NIC XML files. If xmlfiles is provided, parse those; otherwise use config defaults."""
     if not xmlfiles:
         xmlfiles = [
@@ -173,14 +175,12 @@ def parse_nic(config, xmlfiles: list | None = None, logger=logging):
             config.get('xml2csv', 'transformations')
         ]
     for xfile in xmlfiles:
-        parse_nic_file(config, xfile, logger)
+        parse_nic_file(config, xfile)
         logger.info('xml2csv conversion for file %s complete', xfile)
 
 
-def process(config, *xmlfiles, logger=None):
-    if logger is None:
-        logger = logging.getLogger("xml2csv")
-    parse_nic(config, list(xmlfiles) if xmlfiles else None, logger)
+def process(config, *xmlfiles):
+    parse_nic(config, list(xmlfiles) if xmlfiles else None)
 
 
 def main(argv=None):

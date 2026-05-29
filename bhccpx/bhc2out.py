@@ -34,12 +34,13 @@ import multiprocessing as mp
 from enum import StrEnum
 import networkx as nx
 import logging
-from logging import Logger
 import bhc_datautil
 from bhc_datautil import AsOfDate
 import csv2sys
 import sys2bhc
 import bhca
+
+logger = logging.getLogger("bhc2out")
 
 
 # String constants for metric names
@@ -66,7 +67,7 @@ class Metrics(StrEnum):
     GNlbl = 'Geo_Nlabl'
 
 
-def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: ConfigParser, logger: Logger = logging) -> pd.DataFrame:
+def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: ConfigParser) -> pd.DataFrame:
     """
     A dedicated function that produces the summary comparison of complexity
     measures for the Wachovia-Wells Fargo case study. This appears as Table 2
@@ -194,7 +195,7 @@ def complexity_workup(BHC) -> dict[str, int]:
 
 # Calculates a full set of complexity metrics for a BHC, quotienting by
 # both entity type and geographic jurisdiction, and returns them as a dict.
-def test_metrics(metrics: dict[str, int], context: str, logger: Logger = logging):
+def test_metrics(metrics: dict[str, int], context: str):
     # Ensure that the BHC is a single connected component
     if metrics[Metrics.BCmp] != 1:
         logger.warning("BHC is not completely connected. %s: %s, Context: %s", Metrics.BCmp, metrics[Metrics.BCmp], context)
@@ -239,7 +240,7 @@ def test_metrics(metrics: dict[str, int], context: str, logger: Logger = logging
             Metrics.BCrk, metrics[Metrics.BCrk], Metrics.GDHmB, metrics[Metrics.GDHmB], context
         )
         
-def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOfDate, partition:str='entity_type', popup=False, logger:Logger=logging):
+def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOfDate, partition:str='entity_type', popup=False):
     """
     Create an SVG image file representing a BHC.
     The file is stored in the outdir, with the filename: RSSD_<rssd_hh>_<asofdate>.svg.
@@ -293,7 +294,7 @@ def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOf
         os.system("%s %s" % (config.get('bhc2out', 'browsercmd'), svg_file+'.svg'))
 
 
-def make_panel(config: ConfigParser, logger: Logger = logging):
+def make_panel(config: ConfigParser):
     """
     Create a full panel of complexity measures for all BHCs for all quarters
     in the list of as-of dates between asofdate0 and asofdate1.
@@ -304,7 +305,7 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
         pcount = min(config.getint('bhc2out', 'parallel'), os.cpu_count(), len(asof_list))
         pool = mp.Pool(pcount)
         results: dict[AsOfDate, dict[int, dict[str, int]]] = {
-            asof: pool.apply_async(all_bhc_complex, (config, asof, logger))
+            asof: pool.apply_async(all_bhc_complex, (config, asof))
             for asof in asof_list
         }
         results = {k: v.get() for k, v in results.items()}
@@ -313,9 +314,9 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
         logger.debug('Parallel processing complete')
     else:
         logger.info('Beginning sequential processing for each asofdate')
-        results = []
+        results = {}
         for asofdate in tqdm(asof_list, desc="Processing per as-of date"):
-            results.append(all_bhc_complex(config, asofdate, logger))
+            results[asofdate] = all_bhc_complex(config, asofdate)
         logger.debug('Sequential processing complete')
     
     panelfilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'panel_filename'))
@@ -333,17 +334,16 @@ def make_panel(config: ConfigParser, logger: Logger = logging):
     logger.info('**** Processing complete ****')
 
 
-def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, logger=logging):
+def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate):
     DATA = bhc_datautil.makeDATA(
         indir=config.get('bhc2out', 'indir'),
-        fA=config.get('bhc2out', 'attributesactive'),
-        fB=config.get('bhc2out', 'attributesbranch'),
-        fC=config.get('bhc2out', 'attributesclosed'),
-        fREL=config.get('bhc2out', 'relationships'),
+        file_attA=config.get('bhc2out', 'attributesactive'),
+        file_attB=config.get('bhc2out', 'attributesbranch'),
+        file_attC=config.get('bhc2out', 'attributesclosed'),
+        file_rel=config.get('bhc2out', 'relationships'),
         asofdate=asofdate,
-        logger=logger
     )
-    BankSys = csv2sys.make_banksys(config, asofdate, logger=logger)
+    BankSys = csv2sys.make_banksys(config, asofdate)
     highholders: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
     if highholders is None:
         # Include all RSSDs when HHs is None
@@ -361,26 +361,23 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, logger=logging):
     return BHCs
 
 
-def process(config, logger=None):
-    if logger is None:
-        logger = logging.getLogger("bhc2out")
-    
+def process(config):
     if config.getboolean('bhc2out', 'make_panel', fallback=False):
-        make_panel(config, logger=logger)
+        make_panel(config)
     
     if config.getboolean('bhc2out', 'make_wachwells_comparison', fallback=False):
         # Default configs to run
         # RSSD 1073551 is Wachovia Corp.
         # RSSD 1120754 is Wells Fargo & Co.
         BHCconfigs = [
-            (1120754,20061231),
-            (1073551,20061231),
-            (1120754,20080930), 
-            (1073551,20080930),
-            (1120754,20081231),
-            (1120754,20101231)
+            (1120754, AsOfDate.from_int(20061231)),
+            (1073551, AsOfDate.from_int(20061231)),
+            (1120754, AsOfDate.from_int(20080930)), 
+            (1073551, AsOfDate.from_int(20080930)),
+            (1120754, AsOfDate.from_int(20081231)),
+            (1120754, AsOfDate.from_int(20101231))
         ]
-        make_wachwells_comparison(BHCconfigs, config, logger=logger)
+        make_wachwells_comparison(BHCconfigs, config)
 
 # The main function controls execution when running from the command line
 def main(argv=None):
@@ -389,6 +386,4 @@ def main(argv=None):
     process(config)
     
 if __name__ == "__main__":
-    # import doctest
-    # doctest.testmod()
     main()
