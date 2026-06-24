@@ -28,12 +28,13 @@ import sys
 import os
 import logging.config as logcfg
 import logging
-import numpy as np 
-import pandas as pd
 import configparser as cp
-import pickle as pkl
 from dataclasses import dataclass
 from functools import total_ordering
+from collections import defaultdict
+import pickle as pkl
+import numpy as np 
+import pandas as pd
 
 logger = logging.getLogger("bhc_datautil")
 
@@ -586,8 +587,8 @@ def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict
     """
     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
     # Create some containers for derived structures
-    parents: dict[int, set[int]] = {}     # Dictionary of immediate parents (a set) for each node
-    offspring: dict[int, set[int]] = {}   # Dictionary of immediate children (a set) for each node
+    parents: dict[int, set[int]] = defaultdict(set)     # Dictionary of immediate parents (a set) for each node
+    offspring: dict[int, set[int]] = defaultdict(set)   # Dictionary of immediate children (a set) for each node
     entities: set[int] = set()
     high_holders: set[int] = set()
     # Loop through Relationships to assemble entities, parents, and offspring
@@ -597,28 +598,14 @@ def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict
         rssd_par = row[0][ID_RSSD_PARENT]
         rssd_off = row[0][ID_RSSD_OFFSPRING]
         if asofdate < date0 or date1 < asofdate:
-            # logger.warning(
-            #     'asofdate: %s in out of bounds: %d, %d, %s, %s in NIC_highholders',
-            #     asofdate, rssd_par, rssd_off, date0, date1
-            # )
             continue   
         entities.add(rssd_par)
-        try:
-            offspring[rssd_par].add(rssd_off)
-        except KeyError:
-            offspring[rssd_par] = set()
-            offspring[rssd_par].add(rssd_off)
+        offspring[rssd_par].add(rssd_off)
         entities.add(rssd_off)
-        try:
-            parents[rssd_off].add(rssd_par)
-        except KeyError:
-            parents[rssd_off] = set()
-            parents[rssd_off].add(rssd_par)
+        parents[rssd_off].add(rssd_par)
     # Filter entities to find the high_holders
     for ent in entities:
-        try:
-            len(parents[ent])      # Count the parents, if they exist
-        except KeyError:
-            high_holders.add(ent)  # High holders are those w/zero parents
+        if len(parents[ent]) == 0:
+            high_holders.add(ent) # High holders are those w/zero parents
     return high_holders, entities, parents, offspring
 

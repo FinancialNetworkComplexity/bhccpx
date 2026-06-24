@@ -28,10 +28,10 @@ import os
 import glob
 import re
 import logging
+import ast
 from tqdm.auto import tqdm
 from configparser import ConfigParser
 from io import TextIOWrapper
-import ast
 
 logger = logging.getLogger('xml2csv')
 

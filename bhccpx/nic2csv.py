@@ -3,7 +3,8 @@ import glob
 from configparser import ConfigParser
 import zipfile
 import logging
-import xml2csv
+
+from xml2csv import parse_nic_file
 
 logger = logging.getLogger("nic2csv")
 
@@ -39,7 +40,7 @@ def process_files(zipfile_globs: list[str], config: ConfigParser):
 			extracted_files = extract_files_from_zip(zipfile, config.get('DEFAULT', 'datadir'))
 			for extracted_file in extracted_files:
 				if extracted_file.lower().endswith('.xml'):
-					xml2csv.parse_nic_file(config, extracted_file)
+					parse_nic_file(config, extracted_file)
 
 
 def process(config: ConfigParser, *zipfiles: str):
@@ -50,12 +51,12 @@ def process(config: ConfigParser, *zipfiles: str):
 
 def main():
 	import argparse
-	import bhc_datautil
+	from bhc_datautil import read_config
 
 	parser = argparse.ArgumentParser(description='Extract CSV or XML files from zip archives')
 	parser.add_argument('zipfiles', nargs='+', help='List of zip files to process')
 	args = parser.parse_args()
-	config = bhc_datautil.read_config()
+	config = read_config()
 	
 	process(config, *args.zipfiles)
 

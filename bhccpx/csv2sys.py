@@ -24,14 +24,14 @@
 # -----------------------------------------------------------------------------
 
 import os
+from configparser import ConfigParser
+import multiprocessing as mp
+import logging
 import networkx as nx
 import pickle as pkl
-import multiprocessing as mp
 from tqdm.auto import tqdm
-from configparser import ConfigParser
-import logging
-import bhc_datautil
-from bhc_datautil import AsOfDate
+
+from bhc_datautil import AsOfDate, RELcsv2df, REL_IDcols, makeATTs
 
 logger = logging.getLogger("csv2sys")
 
@@ -54,10 +54,7 @@ def clear_cache(cachedir: str, dates: list[AsOfDate]):
             os.remove(sysfilepath)
             
 
-def find_highholders(
-    config: ConfigParser, BankSys: nx.DiGraph,
-    rssd: int | None, hc_types: list[str] | None = None,
-) -> list[int]:
+def find_highholders(BankSys: nx.DiGraph, rssd: int | None, hc_types: list[str] | None = None) -> list[int]:
     """
     Finds an entity's high-holder within a banking system.
     
@@ -163,8 +160,8 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate):
         csvfilepath = os.path.join(config.get('csv2sys', 'indir'), config.get('csv2sys', 'relationships'))
         logger.debug('CSV file path: %s %s', csvfilepath, asofdate)
 
-        RELdf = bhc_datautil.RELcsv2df(csvfilepath)
-        ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = bhc_datautil.REL_IDcols(RELdf)
+        RELdf = RELcsv2df(csvfilepath)
+        ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
         for row in RELdf.iterrows():
             date0 = AsOfDate.from_int(row[0][DT_START])
             date1 = AsOfDate.from_int(row[0][DT_END])
@@ -183,7 +180,7 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate):
         fA = config.get('csv2sys', 'attributesactive')
         fB = config.get('csv2sys', 'attributesbranch')
         fC = config.get('csv2sys', 'attributesclosed')
-        ATTdf = bhc_datautil.makeATTs(indir, fA, fB, fC, filter_asofdate=asofdate)
+        ATTdf = makeATTs(indir, fA, fB, fC, filter_asofdate=asofdate)
         ATTdf = ATTdf[ATTdf.DT_END >= int(asofdate)]
         ATTdf = ATTdf[ATTdf.DT_OPEN <= int(asofdate)]
         nodes_BankSys = set(BankSys.nodes)
@@ -257,8 +254,9 @@ def process(config):
     build_sys(config)
 
 def main(argv=None):
-    config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    from bhc_datautil import read_config, parse_command_line
+    config = read_config()
+    config = parse_command_line(argv, config, __file__)
     process(config)
     
 if __name__ == "__main__":

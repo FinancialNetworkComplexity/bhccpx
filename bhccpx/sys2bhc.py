@@ -24,18 +24,18 @@
 # -----------------------------------------------------------------------------
 
 import os
+import sys
+import ast
+import multiprocessing as mp
+import logging
+from configparser import ConfigParser
 import networkx as nx
 import numpy as np
-import multiprocessing as mp
 from tqdm import tqdm
-from configparser import ConfigParser
 import pickle as pkl
-import ast
-import sys
-import logging
-import bhc_datautil
-from bhc_datautil import NICData, AsOfDate
-import csv2sys
+
+from bhc_datautil import NICData, AsOfDate, fetch_DATA
+from csv2sys import make_banksys
 
 logger = logging.getLogger("sys2bhc")
 
@@ -180,10 +180,10 @@ def extractBHC(
             return pkl.load(f)
 
     if BankSys is None:
-        BankSys = csv2sys.make_banksys(config, asofdate)
+        BankSys = make_banksys(config, asofdate)
     if DATA is None:
         logger.debug('Fetching DATA (not provided)')
-        DATA = bhc_datautil.fetch_DATA(
+        DATA = fetch_DATA(
             outdir=config.get('sys2bhc', 'outdir'),
             asofdate=asofdate,
             indir=config.get('sys2bhc', 'indir'),
@@ -283,7 +283,7 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiG
         - If the BHC extraction for an RSSD fails, then a warning is logged and the RSSD is skipped. This
         may result in the returned list of BHCs being shorter than the number of RSSDs in the bhclist.
     """
-    DATA = bhc_datautil.fetch_DATA(
+    DATA = fetch_DATA(
         outdir=config.get('sys2bhc', 'outdir'),
         asofdate=asofdate,
         indir=config.get('sys2bhc', 'indir'),
@@ -295,7 +295,7 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiG
     rssd_lst: list[int] | None = ast.literal_eval(config.get('sys2bhc', 'bhclist'))
     if rssd_lst is None:
         rssd_lst = sorted(list(DATA.highholders))
-    BankSys = csv2sys.make_banksys(config, asofdate)
+    BankSys = make_banksys(config, asofdate)
     return list(filter(None, [extractBHC(config, asofdate, rssd, DATA, BankSys) for rssd in rssd_lst]))
 
 def make_bhcs(config: ConfigParser):
@@ -337,8 +337,9 @@ def process(config):
     make_bhcs(config)
 
 def main(argv=None):
-    config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    from bhc_datautil import read_config, parse_command_line
+    config = read_config()
+    config = parse_command_line(argv, config, __file__)
     process(config)
     
 if __name__ == "__main__":
