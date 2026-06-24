@@ -299,12 +299,13 @@ def make_panel(config: ConfigParser):
     Create a full panel of complexity measures for all BHCs for all quarters
     in the list of as-of dates between asofdate0 and asofdate1.
     """
-    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('bhc2out', 'asofdate0'), config.get('bhc2out', 'asofdate1'))
+    asof_list = bhc_datautil.AsOfDate.make_range(AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate0')), AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate1')))
     if config.getint('bhc2out', 'parallel') > 0:
         logger.info('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
-        pcount = min(config.getint('bhc2out', 'parallel'), os.cpu_count(), len(asof_list))
+        os_cpu_count = os.cpu_count()
+        pcount = min(config.getint('bhc2out', 'parallel'), 1 if os_cpu_count is None else os_cpu_count, len(asof_list))
         pool = mp.Pool(pcount)
-        results: dict[AsOfDate, dict[int, dict[str, int]]] = {
+        results = {
             asof: pool.apply_async(all_bhc_complex, (config, asof))
             for asof in asof_list
         }
@@ -327,7 +328,7 @@ def make_panel(config: ConfigParser):
         # TODO: NEED TO SORT results BY ASOF AND RSSD BEFORE SAVING TO CSV
         for asof, res in results.items():
             for rssd, metric_dict in res.items():
-                metric_dict['ASOF'] = str(asof)
+                metric_dict['ASOF'] = int(asof)
                 metric_dict['RSSD'] = rssd
                 csvwriter.writerow(metric_dict)
     csvfile.close()
@@ -347,7 +348,7 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate):
     highholders: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
     if highholders is None:
         # Include all RSSDs when HHs is None
-        highholders: list[int] = sorted(list(DATA.highholders))
+        highholders = sorted(list(DATA.highholders))
     logger.debug('Identified %s high-holders for %s', str(len(highholders)), str(asofdate))
 
     BHCs: dict[int, dict[str, int]] = dict()

@@ -8,7 +8,7 @@ import xml2csv
 logger = logging.getLogger("nic2csv")
 
 
-def extract_files_from_zip(zip_path: str, extract_to) -> list[str]:
+def extract_files_from_zip(zip_path: str, extract_to: str) -> list[str]:
 	"""Extract all csv and xml files from zip archive and return list of extracted files."""
 	extracted_files = []
 	with zipfile.ZipFile(zip_path, 'r') as zf:

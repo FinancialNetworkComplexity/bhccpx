@@ -36,7 +36,7 @@ from bhc_datautil import AsOfDate
 logger = logging.getLogger("csv2sys")
 
 
-def clear_cache(cachedir: str, YQ0: str, YQ1: str):
+def clear_cache(cachedir: str, dates: list[AsOfDate]):
     """
     This function removes cached pickle files from the specified cache directory
     that correspond to dates within the range defined by YQ0 and YQ1. The files
@@ -44,13 +44,10 @@ def clear_cache(cachedir: str, YQ0: str, YQ1: str):
 
     :param cachedir: Path to the directory containing cached files
     :type cachedir: str
-    :param YQ0: Start date for the range of files to clear
-    :type YQ0: str or date-like
-    :param YQ1: End date for the range of files to clear
-    :type YQ1: str or date-like
+    :param dates: Dates for which the cached files should be cleared
+    :type dates: list[AsOfDate]
     """
-    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(YQ0, YQ1)
-    for asofdate in asof_list:
+    for asofdate in dates:
         sysfilename = f"NIC_{asofdate}.pkl"
         sysfilepath = os.path.join(cachedir, sysfilename)
         if os.path.isfile(sysfilepath):
@@ -156,7 +153,6 @@ def make_banksys(config: ConfigParser, asofdate: AsOfDate):
     relfilename = config.get('csv2sys', 'relationships')
     csvfilepath = os.path.join(config.get('csv2sys', 'indir'), relfilename)
 
-    BankSys = None
     if os.path.isfile(sysfilepath):
         logger.debug('FOUND: Banking system file path: %s', sysfilepath)
         with open(sysfilepath, 'rb') as f:
@@ -213,33 +209,33 @@ def build_sys(config: ConfigParser):
     
     :param config: Configuration parser containing processing parameters. The 'csv2sys' section should contain:
                    
-                   - clearcache (bool): Whether to clear existing \*.pkl cache files
+                   - clearcache (bool): Whether to clear existing *.pkl cache files
                    - asofdate0 (str): Start date for processing range
                    - asofdate1 (str): End date for processing range  
                    - outdir (str): Output directory path for generated files
                    - parallel (int): Number of parallel processes (0 for sequential)
     :type config: ConfigParser
-    :param logger: Logger instance for recording processing information and debug messages
-    :type logger: logging.Logger, optional
     
     .. note::
         - Sequential processing shows a progress bar for visual feedback
         - Parallel process count is limited by CPU cores and number of dates to process
         - Cache clearing removes NIC_YYYYMMDD.pkl files within the specified date range
     """
+    asof_list = AsOfDate.make_range(AsOfDate.from_YQ_str(config.get('csv2sys', 'asofdate0')), AsOfDate.from_YQ_str(config.get('csv2sys', 'asofdate1')))
+
     if config.getboolean('csv2sys', 'clearcache'):
         # Remove existing banking system pkl files and recreate
         logger.info('Clearing output cache of NIC_YYYYMMDD.pkl files in the range: %s %s', config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
-        clear_cache(config.get('csv2sys', 'outdir'), config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+        clear_cache(config.get('csv2sys', 'outdir'), asof_list)
     
-    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
     logger.debug('List of as-of dates to process: %s Cores: %s %s', asof_list, config.getint('csv2sys', 'parallel'), config.get('csv2sys', 'outdir'))
     if config.getint('csv2sys', 'parallel') > 0:
         logger.info(
             'Beginning parallel processing (%s tasks across %s cores) for each as-of date (process messages may be trapped by parallel threads)',
             str(len(asof_list)), config.getint('csv2sys', 'parallel'))
         
-        pcount = min(config.getint('csv2sys', 'parallel'), os.cpu_count(), len(asof_list))
+        os_cpu_count = os.cpu_count()
+        pcount = min(config.getint('csv2sys', 'parallel'), 1 if os_cpu_count is None else os_cpu_count, len(asof_list))
         pool = mp.Pool(processes=pcount)
         results = [pool.apply_async(make_banksys, (config, asof)) for asof in asof_list]
         with tqdm(total=len(results), desc="Parallel processing per as-of date") as pbar:

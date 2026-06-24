@@ -48,6 +48,7 @@ class AsOfDate:
 
     @staticmethod
     def _quarter_end_date(quarter: int) -> tuple[int, int]:
+        """Returns the (month, day) for the last date of the given quarter."""
         if quarter == 1:
             return (3, 31)
         elif quarter == 2:
@@ -60,6 +61,7 @@ class AsOfDate:
 
     @staticmethod
     def from_YQ(year: int, quarter: int) -> "AsOfDate":
+        """Creates an AsOfDate from year and quarter."""
         if quarter not in [1, 2, 3, 4]:
             raise ValueError(f"Invalid quarter: {quarter}. Quarter must be in 1..4.")
         month, day = AsOfDate._quarter_end_date(quarter)
@@ -67,6 +69,7 @@ class AsOfDate:
     
     @staticmethod
     def from_YQ_str(yq_str: str) -> "AsOfDate":
+        """Creates an AsOfDate from a string with format 'YYYYQQ'."""
         if len(yq_str) != 6 or yq_str[4] != 'Q':
             raise ValueError(f"Invalid yq_str format: {yq_str}. Expected format is 'YYYYQQ'.")
         year = int(yq_str[0:4])
@@ -74,6 +77,7 @@ class AsOfDate:
         return AsOfDate.from_YQ(year, quarter)
     
     def to_YQ_str(self) -> str:
+        """Returns a string representation of the AsOfDate in 'YYYYQQ' format."""
         return f"{self.year:04d}Q{self.quarter}"
     
     @staticmethod
@@ -111,12 +115,14 @@ class AsOfDate:
         return hash(str(self))
     
     def nextq(self) -> "AsOfDate":
+        """Returns the end date of the next quarter."""
         if self.quarter == 4:
             return AsOfDate.from_YQ(self.year + 1, 1)
         else:
             return AsOfDate.from_YQ(self.year, self.quarter + 1)
     
     def prevq(self) -> "AsOfDate":
+        """Returns the end date of the previous quarter."""
         if self.quarter == 1:
             return AsOfDate.from_YQ(self.year - 1, 4)
         else:
@@ -124,10 +130,12 @@ class AsOfDate:
     
     @staticmethod
     def most_recent(year: int, month: int) -> "AsOfDate":
+        """Returns the most recent quarter end date."""
         return AsOfDate.from_YQ(year, ((month - 1) // 3) + 1)
     
     @staticmethod
     def make_range(d0: 'AsOfDate', d1: 'AsOfDate') -> list['AsOfDate']:
+        """Returns a list of AsOfDate objects representing the quarter end dates between d0 and d1 (inclusive)."""
         asofs = []
         if d0 > d1:
             logger.error('End date, %s, precedes start date, %s', d0, d1)
@@ -147,11 +155,6 @@ class AsOfDate:
             for q in range(1,d1.quarter+1):
                 asofs.append(AsOfDate.from_YQ(d1.year, q))
         return asofs
-
-    @staticmethod
-    def make_range_from_YQ_strs(d0_str: str, d1_str: str) -> list['AsOfDate']:
-        d0, d1 = AsOfDate.from_YQ_str(d0_str), AsOfDate.from_YQ_str(d1_str)
-        return AsOfDate.make_range(d0, d1)
 
 
 @dataclass
@@ -273,13 +276,12 @@ def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) 
     The DataFrame is indexed on the ID_RSSD column, and includes an additional
     'NICsource' column indicating the nature of the node ('A', 'B', or 'C').
 
-    :param csvfile: An open, readable pointer to a tab-delimited CSV file that
-    contains the information from a NIC attributes download
+    :param csvfile: An open, readable pointer to a tab-delimited CSV file that contains the information from a NIC attributes download
     :type csvfile: TextIOWrapper
     :param nicsource: A single character indicating the nature of the node.
-        'A' indicates an "active" or going-concern node.
-        'B' indicates a "branch" of an active node; not a distinct entity.
-        'C' indicates a "closed" or "inactive" node.
+        - 'A' indicates an "active" or going-concern node.
+        - 'B' indicates a "branch" of an active node; not a distinct entity.
+        - 'C' indicates a "closed" or "inactive" node.
     :type nicsource: str
     :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
     :type filter_asofdate: AsOfDate | None
