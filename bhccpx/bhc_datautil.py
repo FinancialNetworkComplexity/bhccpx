@@ -28,12 +28,14 @@ import sys
 import os
 import logging.config as logcfg
 import logging
-import numpy as np 
-import pandas as pd
 import configparser as cp
-import pickle as pkl
+from typing import Literal
 from dataclasses import dataclass
 from functools import total_ordering
+from collections import defaultdict
+import pickle as pkl
+import numpy as np 
+import pandas as pd
 
 logger = logging.getLogger("bhc_datautil")
 
@@ -48,6 +50,7 @@ class AsOfDate:
 
     @staticmethod
     def _quarter_end_date(quarter: int) -> tuple[int, int]:
+        """Returns the (month, day) for the last date of the given quarter."""
         if quarter == 1:
             return (3, 31)
         elif quarter == 2:
@@ -60,6 +63,7 @@ class AsOfDate:
 
     @staticmethod
     def from_YQ(year: int, quarter: int) -> "AsOfDate":
+        """Creates an AsOfDate from year and quarter."""
         if quarter not in [1, 2, 3, 4]:
             raise ValueError(f"Invalid quarter: {quarter}. Quarter must be in 1..4.")
         month, day = AsOfDate._quarter_end_date(quarter)
@@ -67,6 +71,7 @@ class AsOfDate:
     
     @staticmethod
     def from_YQ_str(yq_str: str) -> "AsOfDate":
+        """Creates an AsOfDate from a string with format 'YYYYQQ'."""
         if len(yq_str) != 6 or yq_str[4] != 'Q':
             raise ValueError(f"Invalid yq_str format: {yq_str}. Expected format is 'YYYYQQ'.")
         year = int(yq_str[0:4])
@@ -74,6 +79,7 @@ class AsOfDate:
         return AsOfDate.from_YQ(year, quarter)
     
     def to_YQ_str(self) -> str:
+        """Returns a string representation of the AsOfDate in 'YYYYQQ' format."""
         return f"{self.year:04d}Q{self.quarter}"
     
     @staticmethod
@@ -111,12 +117,14 @@ class AsOfDate:
         return hash(str(self))
     
     def nextq(self) -> "AsOfDate":
+        """Returns the end date of the next quarter."""
         if self.quarter == 4:
             return AsOfDate.from_YQ(self.year + 1, 1)
         else:
             return AsOfDate.from_YQ(self.year, self.quarter + 1)
     
     def prevq(self) -> "AsOfDate":
+        """Returns the end date of the previous quarter."""
         if self.quarter == 1:
             return AsOfDate.from_YQ(self.year - 1, 4)
         else:
@@ -124,10 +132,12 @@ class AsOfDate:
     
     @staticmethod
     def most_recent(year: int, month: int) -> "AsOfDate":
+        """Returns the most recent quarter end date."""
         return AsOfDate.from_YQ(year, ((month - 1) // 3) + 1)
     
     @staticmethod
     def make_range(d0: 'AsOfDate', d1: 'AsOfDate') -> list['AsOfDate']:
+        """Returns a list of AsOfDate objects representing the quarter end dates between d0 and d1 (inclusive)."""
         asofs = []
         if d0 > d1:
             logger.error('End date, %s, precedes start date, %s', d0, d1)
@@ -147,11 +157,6 @@ class AsOfDate:
             for q in range(1,d1.quarter+1):
                 asofs.append(AsOfDate.from_YQ(d1.year, q))
         return asofs
-
-    @staticmethod
-    def make_range_from_YQ_strs(d0_str: str, d1_str: str) -> list['AsOfDate']:
-        d0, d1 = AsOfDate.from_YQ_str(d0_str), AsOfDate.from_YQ_str(d1_str)
-        return AsOfDate.make_range(d0, d1)
 
 
 @dataclass
@@ -267,19 +272,18 @@ def print_config(config, modulefile):
 
 
 
-def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
+def ATTcsv2df(csvfile, nicsource: Literal['A', 'B', 'C'], filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     """
     Converts a tab-delimited CSV file containing NIC attributes data into a Pandas DataFrame.
     The DataFrame is indexed on the ID_RSSD column, and includes an additional
     'NICsource' column indicating the nature of the node ('A', 'B', or 'C').
 
-    :param csvfile: An open, readable pointer to a tab-delimited CSV file that
-    contains the information from a NIC attributes download
+    :param csvfile: An open, readable pointer to a tab-delimited CSV file that contains the information from a NIC attributes download
     :type csvfile: TextIOWrapper
     :param nicsource: A single character indicating the nature of the node.
-        'A' indicates an "active" or going-concern node.
-        'B' indicates a "branch" of an active node; not a distinct entity.
-        'C' indicates a "closed" or "inactive" node.
+        - 'A' indicates an "active" or going-concern node.
+        - 'B' indicates a "branch" of an active node; not a distinct entity.
+        - 'C' indicates a "closed" or "inactive" node.
     :type nicsource: str
     :param filter_asofdate: Date to perform filtering by; filtering not performed if None provided
     :type filter_asofdate: AsOfDate | None
@@ -464,12 +468,13 @@ def FAILcsv2df(csvfile):
     return FAILdf
 
 
-def maps_rssd_cert(DATA: NICData):
+def maps_rssd_cert(DATA: NICData) -> tuple[dict, dict]:
+    """Returns two dictionaries mapping RSSD->CERT and CERT->RSSD from the attributes in the provided data."""
     rssd2cert = dict()
     cert2rssd = dict()
     ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
-    for idx,row in ATTdf.iterrows():
+    for idx, row in ATTdf.iterrows():
         rssd = idx
         cert = row['ID_FDIC_CERT']
         rssd2cert[rssd] = cert
@@ -477,9 +482,9 @@ def maps_rssd_cert(DATA: NICData):
     return (rssd2cert, cert2rssd)
 
     
-def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
+def augment_FAILdf(FAILdf: pd.DataFrame, outdir: str, dataasof: AsOfDate):
     FAILdf.sort_values(by=['FAILDATE'], inplace=True)
-    DATA = fetch_DATA(outdir, dataasof)
+    DATA = fetch_cached_DATA(outdir, dataasof)
     ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
     rssd2cert, cert2rssd = maps_rssd_cert(DATA)
@@ -532,6 +537,7 @@ def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDat
 
 
 def makeATTs(indir: str, file_attA: str, file_attB: str, file_attC: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
+    """Creates a unified pandas DataFrame of NIC attributes for all types of nodes (A, B, C)."""
     csvfilepathA = os.path.join(indir, file_attA)
     csvfilepathB = os.path.join(indir, file_attB)
     csvfilepathC = os.path.join(indir, file_attC)
@@ -542,22 +548,37 @@ def makeATTs(indir: str, file_attA: str, file_attB: str, file_attC: str, filter_
     return ATTdf
 
 
-def fetch_DATA(
-    outdir: str, asofdate: AsOfDate, indir: str | None = None,
-    fA: str | None = None, fB: str | None = None, fC: str | None = None, fREL: str | None = None
-) -> NICData:
-    DATA = None
-    datafilename = f"DATA_{asofdate}.pkl"
-    datafilepath = os.path.join(outdir, datafilename)
-    nonefiles = (indir is None or fA is None or fB is None or fC is None or fREL is None)
+def fetch_cached_DATA(outdir: str, asofdate: AsOfDate) -> NICData:
+    """
+    Fetches the NIC data for the given asofdate from the cache in the outdir parameter.
+
+    :raises FileNotFoundError: If the cached file is not found.
+    """
+    datafilepath = os.path.join(outdir, f"DATA_{asofdate}.pkl")
     if os.path.isfile(datafilepath):
         with open(datafilepath, 'rb') as f:
             DATA: NICData = pkl.load(f)
-    elif not nonefiles:
+        return DATA
+    else:
+        raise FileNotFoundError(f"Cached DATA file {datafilepath} not found.")
+
+def fetch_DATA(
+    outdir: str, asofdate: AsOfDate, indir: str,
+    fA: str, fB: str, fC: str, fREL: str
+) -> NICData:
+    """
+    Fetches the NIC data for the given asofdate as cached in the outdir parameter.
+    If the file is not found, the other arguments are used to construct it, and the result
+    is cached before being returned.
+    """
+    try:
+        return fetch_cached_DATA(outdir, asofdate)
+    except FileNotFoundError:
+        datafilepath = os.path.join(outdir, f"DATA_{asofdate}.pkl")
         DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate)
         with open(datafilepath, 'wb') as f:
             pkl.dump(DATA, f)
-    return DATA
+        return DATA
 
 
 def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict[int, set[int]], dict[int, set[int]]]:
@@ -584,8 +605,8 @@ def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict
     """
     ID_RSSD_PARENT, ID_RSSD_OFFSPRING, DT_START, DT_END = REL_IDcols(RELdf)
     # Create some containers for derived structures
-    parents: dict[int, set[int]] = {}     # Dictionary of immediate parents (a set) for each node
-    offspring: dict[int, set[int]] = {}   # Dictionary of immediate children (a set) for each node
+    parents: dict[int, set[int]] = defaultdict(set)     # Dictionary of immediate parents (a set) for each node
+    offspring: dict[int, set[int]] = defaultdict(set)   # Dictionary of immediate children (a set) for each node
     entities: set[int] = set()
     high_holders: set[int] = set()
     # Loop through Relationships to assemble entities, parents, and offspring
@@ -595,28 +616,14 @@ def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict
         rssd_par = row[0][ID_RSSD_PARENT]
         rssd_off = row[0][ID_RSSD_OFFSPRING]
         if asofdate < date0 or date1 < asofdate:
-            # logger.warning(
-            #     'asofdate: %s in out of bounds: %d, %d, %s, %s in NIC_highholders',
-            #     asofdate, rssd_par, rssd_off, date0, date1
-            # )
             continue   
         entities.add(rssd_par)
-        try:
-            offspring[rssd_par].add(rssd_off)
-        except KeyError:
-            offspring[rssd_par] = set()
-            offspring[rssd_par].add(rssd_off)
+        offspring[rssd_par].add(rssd_off)
         entities.add(rssd_off)
-        try:
-            parents[rssd_off].add(rssd_par)
-        except KeyError:
-            parents[rssd_off] = set()
-            parents[rssd_off].add(rssd_par)
+        parents[rssd_off].add(rssd_par)
     # Filter entities to find the high_holders
     for ent in entities:
-        try:
-            len(parents[ent])      # Count the parents, if they exist
-        except KeyError:
-            high_holders.add(ent)  # High holders are those w/zero parents
+        if len(parents[ent]) == 0:
+            high_holders.add(ent) # High holders are those w/zero parents
     return high_holders, entities, parents, offspring
 

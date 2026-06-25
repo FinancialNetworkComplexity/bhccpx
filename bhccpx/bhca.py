@@ -24,11 +24,11 @@
 # -----------------------------------------------------------------------------
 
 from typing import Any
-import networkx as nx
 from enum import Enum
 import itertools
 import logging
 import re
+import networkx as nx
 
 logger = logging.getLogger("bhca")
 

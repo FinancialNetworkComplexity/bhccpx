@@ -23,22 +23,25 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+import os
 import ast
 from configparser import ConfigParser
-import os
+import logging
 import csv
+import multiprocessing as mp
+from enum import StrEnum
 import pandas as pd
 import graphviz as gv
 from tqdm.auto import tqdm
-import multiprocessing as mp
-from enum import StrEnum
 import networkx as nx
-import logging
-import bhc_datautil
-from bhc_datautil import AsOfDate
-import csv2sys
-import sys2bhc
-import bhca
+
+from bhc_datautil import AsOfDate, makeDATA
+from csv2sys import make_banksys
+from sys2bhc import populate_bhc, extractBHC
+from bhca import (
+	QType, get_labels, edge_count, cycle_rank, number_of_components,
+	get_quotient, get_contraction, get_disjoint_maximal_homogeneous_subgraphs
+)
 
 logger = logging.getLogger("bhc2out")
 
@@ -88,14 +91,14 @@ def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: Co
     BHCdict = {}
     logger.info('Creating BHC networks')
     for rssd, asof in tqdm(BHCconfigs, desc="BHC-Quarter pairs"):
-        BHC = sys2bhc.extractBHC(config, asof, rssd)
+        BHC = extractBHC(config, asof, rssd)
         metrics = complexity_workup(BHC)
         BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
     table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
     table2.columns = cols
     table2['rssd'] = table2['rssd'].astype(int)
-    table2.sort_values(['rssd','asofdate'],ascending=[True,True],inplace=True)
+    table2.sort_values(['rssd','asofdate'], ascending=[True,True], inplace=True)
     logger.debug(table2.iloc[:,2:6])
     logger.debug(table2.iloc[:,6:14])
     logger.debug(table2.iloc[:,14:22])
@@ -152,43 +155,43 @@ def complexity_workup(BHC) -> dict[str, int]:
     metrics = dict()
     # Basic metrics, using the key constants defined above
     metrics[Metrics.BVct] = BHC.number_of_nodes()
-    metrics[Metrics.BEct] = bhca.edge_count(BHC)
-    metrics[Metrics.BCrk] = bhca.cycle_rank(BHC)
-    metrics[Metrics.BCmp] = bhca.number_of_components(BHC)
+    metrics[Metrics.BEct] = edge_count(BHC)
+    metrics[Metrics.BCrk] = cycle_rank(BHC)
+    metrics[Metrics.BCmp] = number_of_components(BHC)
 
     # Quotiented by entity type
     DIMEN = 'entity_type'
-    QEF = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL)
-    QEH = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO)
-    QEFC = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL_COND)
-    QEHC = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO_COND)
-    CE = bhca.get_contraction(BHC, DIMEN).to_undirected()
-    DMHE = bhca.get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[Metrics.EQfxB] = bhca.cycle_rank(QEF)
-    metrics[Metrics.EQhxB] = bhca.cycle_rank(QEH)
-    metrics[Metrics.EQfcB] = bhca.cycle_rank(QEFC)
-    metrics[Metrics.EQhcB] = bhca.cycle_rank(QEHC)
-    metrics[Metrics.EQecB] = bhca.cycle_rank(CE)
-    metrics[Metrics.EDHmB] = bhca.cycle_rank(DMHE)
-    metrics[Metrics.EDHmM] = bhca.number_of_components(DMHE)
-    metrics[Metrics.ENlbl] = len(bhca.get_labels(BHC, DIMEN))
+    QEF = get_quotient(BHC, DIMEN, QType.FULL)
+    QEH = get_quotient(BHC, DIMEN, QType.HETERO)
+    QEFC = get_quotient(BHC, DIMEN, QType.FULL_COND)
+    QEHC = get_quotient(BHC, DIMEN, QType.HETERO_COND)
+    CE = get_contraction(BHC, DIMEN).to_undirected()
+    DMHE = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
+    metrics[Metrics.EQfxB] = cycle_rank(QEF)
+    metrics[Metrics.EQhxB] = cycle_rank(QEH)
+    metrics[Metrics.EQfcB] = cycle_rank(QEFC)
+    metrics[Metrics.EQhcB] = cycle_rank(QEHC)
+    metrics[Metrics.EQecB] = cycle_rank(CE)
+    metrics[Metrics.EDHmB] = cycle_rank(DMHE)
+    metrics[Metrics.EDHmM] = number_of_components(DMHE)
+    metrics[Metrics.ENlbl] = len(get_labels(BHC, DIMEN))
 
     # Quotiented by geographic jurisdiction
     DIMEN = 'GEO_JURISD'
-    QGF = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL)
-    QGH = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO)
-    QGFC = bhca.get_quotient(BHC, DIMEN, bhca.QType.FULL_COND)
-    QGHC = bhca.get_quotient(BHC, DIMEN, bhca.QType.HETERO_COND)
-    CG = bhca.get_contraction(BHC, DIMEN).to_undirected()
-    DMHG = bhca.get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[Metrics.GQfxB] = bhca.cycle_rank(QGF)
-    metrics[Metrics.GQhxB] = bhca.cycle_rank(QGH)
-    metrics[Metrics.GQfcB] = bhca.cycle_rank(QGFC)
-    metrics[Metrics.GQhcB] = bhca.cycle_rank(QGHC)
-    metrics[Metrics.GQecB] = bhca.cycle_rank(CG)
-    metrics[Metrics.GDHmB] = bhca.cycle_rank(DMHG)
-    metrics[Metrics.GDHmM] = bhca.number_of_components(DMHG)
-    metrics[Metrics.GNlbl] = len(bhca.get_labels(BHC, DIMEN))
+    QGF = get_quotient(BHC, DIMEN, QType.FULL)
+    QGH = get_quotient(BHC, DIMEN, QType.HETERO)
+    QGFC = get_quotient(BHC, DIMEN, QType.FULL_COND)
+    QGHC = get_quotient(BHC, DIMEN, QType.HETERO_COND)
+    CG = get_contraction(BHC, DIMEN).to_undirected()
+    DMHG = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
+    metrics[Metrics.GQfxB] = cycle_rank(QGF)
+    metrics[Metrics.GQhxB] = cycle_rank(QGH)
+    metrics[Metrics.GQfcB] = cycle_rank(QGFC)
+    metrics[Metrics.GQhcB] = cycle_rank(QGHC)
+    metrics[Metrics.GQecB] = cycle_rank(CG)
+    metrics[Metrics.GDHmB] = cycle_rank(DMHG)
+    metrics[Metrics.GDHmM] = number_of_components(DMHG)
+    metrics[Metrics.GNlbl] = len(get_labels(BHC, DIMEN))
 
     return metrics
 
@@ -299,12 +302,13 @@ def make_panel(config: ConfigParser):
     Create a full panel of complexity measures for all BHCs for all quarters
     in the list of as-of dates between asofdate0 and asofdate1.
     """
-    asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('bhc2out', 'asofdate0'), config.get('bhc2out', 'asofdate1'))
+    asof_list = AsOfDate.make_range(AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate0')), AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate1')))
     if config.getint('bhc2out', 'parallel') > 0:
         logger.info('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
-        pcount = min(config.getint('bhc2out', 'parallel'), os.cpu_count(), len(asof_list))
+        os_cpu_count = os.cpu_count()
+        pcount = min(config.getint('bhc2out', 'parallel'), 1 if os_cpu_count is None else os_cpu_count, len(asof_list))
         pool = mp.Pool(pcount)
-        results: dict[AsOfDate, dict[int, dict[str, int]]] = {
+        results = {
             asof: pool.apply_async(all_bhc_complex, (config, asof))
             for asof in asof_list
         }
@@ -327,15 +331,15 @@ def make_panel(config: ConfigParser):
         # TODO: NEED TO SORT results BY ASOF AND RSSD BEFORE SAVING TO CSV
         for asof, res in results.items():
             for rssd, metric_dict in res.items():
-                metric_dict['ASOF'] = str(asof)
+                metric_dict['ASOF'] = int(asof)
                 metric_dict['RSSD'] = rssd
                 csvwriter.writerow(metric_dict)
     csvfile.close()
     logger.info('**** Processing complete ****')
 
 
-def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate):
-    DATA = bhc_datautil.makeDATA(
+def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate) -> dict[int, dict[str, int]]:
+    DATA = makeDATA(
         indir=config.get('bhc2out', 'indir'),
         file_attA=config.get('bhc2out', 'attributesactive'),
         file_attB=config.get('bhc2out', 'attributesbranch'),
@@ -343,16 +347,16 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate):
         file_rel=config.get('bhc2out', 'relationships'),
         asofdate=asofdate,
     )
-    BankSys = csv2sys.make_banksys(config, asofdate)
+    BankSys = make_banksys(config, asofdate)
     highholders: list[int] | None = ast.literal_eval(config.get('bhc2out', 'bhclist'))
     if highholders is None:
         # Include all RSSDs when HHs is None
-        highholders: list[int] = sorted(list(DATA.highholders))
+        highholders = sorted(list(DATA.highholders))
     logger.debug('Identified %s high-holders for %s', str(len(highholders)), str(asofdate))
 
     BHCs: dict[int, dict[str, int]] = dict()
     for rssd in highholders:
-        BHC = sys2bhc.populate_bhc(config, BankSys, DATA, rssd)
+        BHC = populate_bhc(config, BankSys, DATA, rssd)
         metrics = complexity_workup(BHC)
         if config.getboolean('bhc2out', 'test_metrics'):
             context = f"ASOF={str(asofdate)}, RSSD={str(rssd)}"
@@ -381,8 +385,9 @@ def process(config):
 
 # The main function controls execution when running from the command line
 def main(argv=None):
-    config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    from bhc_datautil import read_config, parse_command_line
+    config = read_config()
+    config = parse_command_line(argv, config, __file__)
     process(config)
     
 if __name__ == "__main__":

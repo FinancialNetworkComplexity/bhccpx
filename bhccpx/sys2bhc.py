@@ -24,18 +24,18 @@
 # -----------------------------------------------------------------------------
 
 import os
+import sys
+import ast
+import multiprocessing as mp
+import logging
+from configparser import ConfigParser
 import networkx as nx
 import numpy as np
-import multiprocessing as mp
 from tqdm import tqdm
-from configparser import ConfigParser
 import pickle as pkl
-import ast
-import sys
-import logging
-import bhc_datautil
-from bhc_datautil import NICData, AsOfDate
-import csv2sys
+
+from bhc_datautil import NICData, AsOfDate, fetch_DATA
+from csv2sys import make_banksys
 
 logger = logging.getLogger("sys2bhc")
 
@@ -92,7 +92,7 @@ def add_attributes(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.D
     return BHC
 
 
-def remove_branches(config: ConfigParser, DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
+def remove_branches(DATA: NICData, BHC: nx.DiGraph) -> nx.DiGraph:
     """
     Creates a copy of the input BHC DiGraph and removes all nodes that are identified
     as branches (NICsource == 'B') along with all their descendant nodes in the 
@@ -162,7 +162,6 @@ def extractBHC(
     The function also decorates the BHC graph with a number of important
     attributes, by calling the add_attributes().
     """
-    BHC = None
     if config.get('sys2bhc', 'indir') != config.get('csv2sys', 'indir'):
         logger.warning(
             'csv2sys.indir: %s differs from sys2bhc_indir: %s',
@@ -181,10 +180,10 @@ def extractBHC(
             return pkl.load(f)
 
     if BankSys is None:
-        BankSys = csv2sys.make_banksys(config, asofdate)
+        BankSys = make_banksys(config, asofdate)
     if DATA is None:
         logger.debug('Fetching DATA (not provided)')
-        DATA = bhc_datautil.fetch_DATA(
+        DATA = fetch_DATA(
             outdir=config.get('sys2bhc', 'outdir'),
             asofdate=asofdate,
             indir=config.get('sys2bhc', 'indir'),
@@ -207,9 +206,10 @@ def extractBHC(
             'As of %s, BHC %s has %s nodes and %s edges: %s',
             asofdate, rssd, BHC.number_of_nodes(), BHC.number_of_edges(), BHC.nodes(data=True)[rssd]['nm_lgl']
         )
+        return BHC
     else:
         logger.warning('RSSD missing from high-holder list: %s as of %s', rssd, asofdate)
-    return BHC
+        return None
 
 
 def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd) -> nx.DiGraph:
@@ -242,7 +242,7 @@ def populate_bhc(config: ConfigParser, BankSys: nx.DiGraph, DATA: NICData, rssd)
     BHC = add_attributes(config, DATA, BHC)
     if not usebranches:
         logger.info(f"Removing branches ({usebranches=}) for high-holder: {rssd}")
-        BHC = remove_branches(config, DATA, BHC)
+        BHC = remove_branches(DATA, BHC)
     BHC = BHC.to_directed()
     return BHC
 
@@ -265,13 +265,25 @@ def clear_cache(cachedir: str, asof_list: list[AsOfDate]):
             os.remove(filepath)
 
 
-def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiGraph | None]:
+def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiGraph]:
     """
-    Loop over all RSSD IDs in the bhclist (in config), loading or creating 
-    a cached pik file for each on the asofdate. 
-    Returns a list containing those BHCs. 
+    Loop over all RSSD IDs in the bhclist (in config).
+    For each rssd, load a cached pickle file for the corresponding BHC on the
+    provided asofdate, or create them if it does not exist.
+    If the bhclist is `None`, then all available highholders are used.
+
+    :param config: Configuration information
+    :type config: ConfigParser
+    :param asofdate: Date on which to extract BHCs
+    :type asofdate: AsOfDate
+    :returns: List of extracted BHC graphs for the specified asofdate
+    :rtype: list[nx.DiGraph]
+
+    .. note::
+        - If the BHC extraction for an RSSD fails, then a warning is logged and the RSSD is skipped. This
+        may result in the returned list of BHCs being shorter than the number of RSSDs in the bhclist.
     """
-    DATA = bhc_datautil.fetch_DATA(
+    DATA = fetch_DATA(
         outdir=config.get('sys2bhc', 'outdir'),
         asofdate=asofdate,
         indir=config.get('sys2bhc', 'indir'),
@@ -282,14 +294,9 @@ def extract_bhcs_ondate(config: ConfigParser, asofdate: AsOfDate) -> list[nx.DiG
     )
     rssd_lst: list[int] | None = ast.literal_eval(config.get('sys2bhc', 'bhclist'))
     if rssd_lst is None:
-        rssd_lst: list[int] = sorted(list(DATA.highholders))
-    BankSys = csv2sys.make_banksys(config, asofdate)
-
-    BHCs = []
-    for rssd in rssd_lst:
-        BHC = extractBHC(config, asofdate, rssd, DATA, BankSys)
-        BHCs.append(BHC)
-    return BHCs
+        rssd_lst = sorted(list(DATA.highholders))
+    BankSys = make_banksys(config, asofdate)
+    return list(filter(None, [extractBHC(config, asofdate, rssd, DATA, BankSys) for rssd in rssd_lst]))
 
 def make_bhcs(config: ConfigParser):
     """
@@ -299,16 +306,17 @@ def make_bhcs(config: ConfigParser):
     asof_list = ast.literal_eval(config.get('sys2bhc', 'asoflist'))
     if asof_list is None:
         # Include all dates in range when provided asof_list is None
-        asof_list = bhc_datautil.AsOfDate.make_range_from_YQ_strs(config.get('csv2sys', 'asofdate0'), config.get('csv2sys', 'asofdate1'))
+        asof_list = AsOfDate.make_range(AsOfDate.from_YQ_str(config.get('csv2sys', 'asofdate0')), AsOfDate.from_YQ_str(config.get('csv2sys', 'asofdate1')))
     else:
-        asof_list = list(map(lambda YQ: bhc_datautil.AsOfDate.from_YQ_str(YQ), asof_list))
+        asof_list = list(map(lambda YQ: AsOfDate.from_YQ_str(YQ), asof_list))
     if config.getboolean('sys2bhc', 'clearcache'):
         clear_cache(config.get('sys2bhc', 'outdir'), asof_list)
     if config.getint('sys2bhc', 'parallel') > 0:
         logger.info(
             'Beginning parallel processing (%s tasks across %s cores) for each as-of date (process messages may be trapped by parallel threads)',
             str(len(asof_list)), config.getint('sys2bhc', 'parallel'))
-        pcount = min(config.getint('sys2bhc', 'parallel'), os.cpu_count(), len(asof_list))
+        os_cpu_count = os.cpu_count()
+        pcount = min(config.getint('sys2bhc', 'parallel'), 1 if os_cpu_count is None else os_cpu_count, len(asof_list))
         pool = mp.Pool(pcount)
         results = [pool.apply_async(extract_bhcs_ondate, (config, asof)) for asof in asof_list]
         with tqdm(total=len(results), desc="Parallel processing for each asofdate") as pbar:
@@ -329,8 +337,9 @@ def process(config):
     make_bhcs(config)
 
 def main(argv=None):
-    config = bhc_datautil.read_config()
-    config = bhc_datautil.parse_command_line(argv, config, __file__)
+    from bhc_datautil import read_config, parse_command_line
+    config = read_config()
+    config = parse_command_line(argv, config, __file__)
     process(config)
     
 if __name__ == "__main__":
