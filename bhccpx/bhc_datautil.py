@@ -29,6 +29,7 @@ import os
 import logging.config as logcfg
 import logging
 import configparser as cp
+from typing import Literal
 from dataclasses import dataclass
 from functools import total_ordering
 from collections import defaultdict
@@ -271,7 +272,7 @@ def print_config(config, modulefile):
 
 
 
-def ATTcsv2df(csvfile, nicsource: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
+def ATTcsv2df(csvfile, nicsource: Literal['A', 'B', 'C'], filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
     """
     Converts a tab-delimited CSV file containing NIC attributes data into a Pandas DataFrame.
     The DataFrame is indexed on the ID_RSSD column, and includes an additional
@@ -467,12 +468,13 @@ def FAILcsv2df(csvfile):
     return FAILdf
 
 
-def maps_rssd_cert(DATA: NICData):
+def maps_rssd_cert(DATA: NICData) -> tuple[dict, dict]:
+    """Returns two dictionaries mapping RSSD->CERT and CERT->RSSD from the attributes in the provided data."""
     rssd2cert = dict()
     cert2rssd = dict()
     ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
-    for idx,row in ATTdf.iterrows():
+    for idx, row in ATTdf.iterrows():
         rssd = idx
         cert = row['ID_FDIC_CERT']
         rssd2cert[rssd] = cert
@@ -480,9 +482,9 @@ def maps_rssd_cert(DATA: NICData):
     return (rssd2cert, cert2rssd)
 
     
-def augment_FAILdf(FAILdf, outdir, dataasof: AsOfDate):
+def augment_FAILdf(FAILdf: pd.DataFrame, outdir: str, dataasof: AsOfDate):
     FAILdf.sort_values(by=['FAILDATE'], inplace=True)
-    DATA = fetch_DATA(outdir, dataasof)
+    DATA = fetch_cached_DATA(outdir, dataasof)
     ATTdf = DATA.attributes
     ATTdf = ATTdf[ATTdf.ID_FDIC_CERT > 0]
     rssd2cert, cert2rssd = maps_rssd_cert(DATA)
@@ -535,6 +537,7 @@ def makeDATA(indir, file_attA, file_attB, file_attC, file_rel, asofdate: AsOfDat
 
 
 def makeATTs(indir: str, file_attA: str, file_attB: str, file_attC: str, filter_asofdate: AsOfDate | None = None) -> pd.DataFrame:
+    """Creates a unified pandas DataFrame of NIC attributes for all types of nodes (A, B, C)."""
     csvfilepathA = os.path.join(indir, file_attA)
     csvfilepathB = os.path.join(indir, file_attB)
     csvfilepathC = os.path.join(indir, file_attC)
@@ -545,22 +548,37 @@ def makeATTs(indir: str, file_attA: str, file_attB: str, file_attC: str, filter_
     return ATTdf
 
 
-def fetch_DATA(
-    outdir: str, asofdate: AsOfDate, indir: str | None = None,
-    fA: str | None = None, fB: str | None = None, fC: str | None = None, fREL: str | None = None
-) -> NICData:
-    DATA = None
-    datafilename = f"DATA_{asofdate}.pkl"
-    datafilepath = os.path.join(outdir, datafilename)
-    nonefiles = (indir is None or fA is None or fB is None or fC is None or fREL is None)
+def fetch_cached_DATA(outdir: str, asofdate: AsOfDate) -> NICData:
+    """
+    Fetches the NIC data for the given asofdate from the cache in the outdir parameter.
+
+    :raises FileNotFoundError: If the cached file is not found.
+    """
+    datafilepath = os.path.join(outdir, f"DATA_{asofdate}.pkl")
     if os.path.isfile(datafilepath):
         with open(datafilepath, 'rb') as f:
             DATA: NICData = pkl.load(f)
-    elif not nonefiles:
+        return DATA
+    else:
+        raise FileNotFoundError(f"Cached DATA file {datafilepath} not found.")
+
+def fetch_DATA(
+    outdir: str, asofdate: AsOfDate, indir: str,
+    fA: str, fB: str, fC: str, fREL: str
+) -> NICData:
+    """
+    Fetches the NIC data for the given asofdate as cached in the outdir parameter.
+    If the file is not found, the other arguments are used to construct it, and the result
+    is cached before being returned.
+    """
+    try:
+        return fetch_cached_DATA(outdir, asofdate)
+    except FileNotFoundError:
+        datafilepath = os.path.join(outdir, f"DATA_{asofdate}.pkl")
         DATA = makeDATA(indir, fA, fB, fC, fREL, asofdate)
         with open(datafilepath, 'wb') as f:
             pkl.dump(DATA, f)
-    return DATA
+        return DATA
 
 
 def NIC_highholders(RELdf, asofdate: AsOfDate) -> tuple[set[int], set[int], dict[int, set[int]], dict[int, set[int]]]:
