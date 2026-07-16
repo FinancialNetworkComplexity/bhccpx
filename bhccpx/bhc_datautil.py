@@ -210,7 +210,7 @@ def parse_command_line(argv, config, modulefile):
             if "-p"==o:
                 [paramkey, paramval] = a.split(':')
                 config[section][paramkey] = paramval
-            if "-C"==o:
+            elif "-C"==o:
                 pass
             elif "-c"==o:
                 showconfig = True
