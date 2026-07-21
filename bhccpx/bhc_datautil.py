@@ -36,6 +36,8 @@ from collections import defaultdict
 import pickle as pkl
 import numpy as np 
 import pandas as pd
+import argparse
+import ast
 
 logger = logging.getLogger("bhc_datautil")
 
@@ -169,103 +171,61 @@ class NICData:
     offspring: dict[int, set[int]]
 
 
-def parse_command_line(argv, config, modulefile):
-    """Parses command-line arguments and overrides items in the config.
-    
-    This method assumes that the Python ConfigParser has already read in
-    a config object (during module import), and that additional arguments
-    (argv) are available as command-line parameters. The following 
-    parameters (all optional) are recognized:
-        
-        * -c   Print the config dictionary for this module to stdout
-        * -l <loglevel_file>      Set the logging threshold for file output
-        * -L <loglevel_console>   Set the logging threshold for console output
-        * -C <configfile>   Read custom configuration from a separate file
-        * -h | --help   Print usage help and quit
-        * -p <paramkey>:<paramval>  Override/set individual config parameters
-    """
-    usagestring = ('python ' + modulefile +
-                  ' [-c]' +
-                  ' [-C <configfile>]' +
-                  ' [-l <loglevel_file>]' +
-                  ' [-L <loglevel_console>]' +
-                  ' [-h | --help]' +
-                  ' [-p <paramkey>:<paramval>]')
-    section = os.path.splitext(os.path.basename(modulefile))[0]
-    showconfig = False
-    if argv is None:
-        argv = sys.argv
-    try:
-        try:
-            opts, args = getopt.getopt(argv[1:], "hcl:L:C:p:", ["help"])
-        except getopt.error as msg:
-            raise Usage(msg)
-        for o, a in opts:
-            # Scan through once, to see if a special config is named
-            if "-C"==o:
-                cfgfile = a
-                config = read_config(cfgfile)
-        for o, a in opts:
-            # Now we have the right config file, get the parameters
-            if "-p"==o:
-                [paramkey, paramval] = a.split(':')
-                config[section][paramkey] = paramval
-            elif "-C"==o:
-                pass
-            elif "-c"==o:
-                showconfig = True
-            elif "-l"==o:
-                config['handler_file']['level'] = a
-            elif "-L"==o:
-                config['handler_console']['level'] = a
-            elif o in ("-h", "--help"):
-                print(usagestring)
-                sys.exit()
-            else:
-                assert False, "unhandled option: " + o
-    except Usage as err:
-        print(err.msg, file=sys.stderr)
-        print("for help use --help", file=sys.stderr)
-        raise err
-    
-    if showconfig:
-        print_config(config, modulefile)
-    return config
-
-class Usage(Exception):
-    def __init__(self, msg):
-        self.msg = msg
+def add_common_args(parser: argparse.ArgumentParser):
+    """Adds common command-line arguments to the provided parser."""
+    parser.add_argument('-c', '--config', type=str, help='Read custom configuration from a separate file')
+    parser.add_argument('--print-config', action='store_true', help='Print the config dictionary for this module to stdout')
+    parser.add_argument('-l', '--loglevel_file', type=str, help='Set the logging threshold for file output')
+    parser.add_argument('-L', '--loglevel_console', type=str, help='Set the logging threshold for console output')
+    parser.add_argument('-p', '--param', action='append', help='Override/set individual config parameters in the form `key:value`')
 
 
-
-def read_config(config_file=os.path.join(os.path.dirname(__file__), 'BHCCPX.ini')):
-    """Reads the application configuration from the BHCCPX.ini file"""
+def get_config(args: argparse.Namespace, module: str) -> cp.ConfigParser:
+    config_file = args.config or os.path.join(os.path.dirname(__file__), 'BHCCPX.ini')
     config = cp.ConfigParser(interpolation=cp.ExtendedInterpolation())
     config.read(config_file, encoding='utf-8')
-    # It is safe to configure logging repeatedly; extra calls get ignored
-    log_dir = config.get('handler_file', 'args')
-    log_dir = log_dir.split(sep="'")[1]
-    log_dir = os.path.split(log_dir)[0]
-    os.makedirs(log_dir, exist_ok=True)
+
+    if args.loglevel_file:
+        config.set('handler_file', 'level', args.loglevel_file)
+    if args.loglevel_console:
+        config.set('handler_console', 'level', args.loglevel_console)
+    
+    if (log_dir := config.get('handler_file', 'args')) is not None:
+        log_dir = log_dir.split(sep="'")[1]
+        log_dir = os.path.dirname(log_dir) if os.path.isfile(log_dir) else log_dir
+        os.makedirs(log_dir, exist_ok=True)
     logcfg.fileConfig(config, disable_existing_loggers=False)
+    
+    for update in (args.param or []):
+        if ':' not in update:
+            logger.error("Invalid config parameter override: '''%s'''. Expected format is key:value", update)
+            continue
+        key, value = update.split(':')
+        if key not in config[module]:
+            logger.error("Config parameter override key '''%s''' not found in section [%s]", key, module)
+            continue
+        config.set(module, key, value)
+    
+    if args.print_config:
+        print_config(config, module)
+
     return config
 
 
 
-def print_config(config, modulefile):
+def print_config(config: cp.ConfigParser, module: str):
     """
     Simple formatted dump of the config parameters relevant for a given
     configuration section. Useful for debugging.
     """
-    section = os.path.splitext(os.path.basename(modulefile))[0]
     print('-------------------------- CONFIG ----------------------------')
     print('Current working directory:', os.getcwd())
     print('[DEFAULT]')
     config_dict = dict(config['DEFAULT'])
     for k,v in sorted(config_dict.items()):
         print(k, '=', v)
-    print('['+section+']')
-    config_dict = dict(config[section])
+    print('['+module+']')
+    config_dict = dict(config[module])
     for k,v in sorted(config_dict.items()):
         print(k, '=', v)
     print('--------------------------------------------------------------')

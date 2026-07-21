@@ -254,10 +254,15 @@ def process(config):
     build_sys(config)
 
 def main(argv=None):
-    from bhc_datautil import read_config, parse_command_line
-    config = read_config()
-    config = parse_command_line(argv, config, __file__)
-    process(config)
+	import argparse
+	from bhc_datautil import add_common_args, get_config
+
+	parser = argparse.ArgumentParser(description='Process NIC data to create banking system representations for specified dates')
+	add_common_args(parser)
+	args = parser.parse_args()
+	config = get_config(args, 'csv2sys')
+	
+	process(config)
     
 if __name__ == "__main__":
     main()
