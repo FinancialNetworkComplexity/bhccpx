@@ -383,12 +383,16 @@ def process(config):
         ]
         make_wachwells_comparison(BHCconfigs, config)
 
-# The main function controls execution when running from the command line
-def main(argv=None):
-    from bhc_datautil import read_config, parse_command_line
-    config = read_config()
-    config = parse_command_line(argv, config, __file__)
-    process(config)
+def main():
+	import argparse
+	from bhc_datautil import add_common_args, get_config
+
+	parser = argparse.ArgumentParser(description='Compute complexity metrics for BHCs and generate output tables/files')
+	add_common_args(parser)
+	args = parser.parse_args()
+	config = get_config(args, 'bhc2out')
+	
+	process(config, *args.zipfiles)
     
 if __name__ == "__main__":
     main()

@@ -198,13 +198,13 @@ def process(config: ConfigParser, *xmlfiles: str):
 
 def main(argv=None):
 	import argparse
-	import bhc_datautil
+	from bhc_datautil import add_common_args, get_config
 
 	parser = argparse.ArgumentParser(description='Convert NIC XML files to CSV')
 	parser.add_argument('xmlfiles', nargs='*', help='List of XML files to convert (uses config defaults if none provided)')
-	args, remaining = parser.parse_known_args(argv)
-	config = bhc_datautil.read_config()
-	config = bhc_datautil.parse_command_line(remaining, config, __file__)
+	add_common_args(parser)
+	args = parser.parse_args()
+	config = get_config(args, 'xml2csv')
 	
 	process(config, *args.xmlfiles)
 

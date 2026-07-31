@@ -51,12 +51,13 @@ def process(config: ConfigParser, *zipfiles: str):
 
 def main():
 	import argparse
-	from bhc_datautil import read_config
+	from bhc_datautil import add_common_args, get_config
 
 	parser = argparse.ArgumentParser(description='Extract CSV or XML files from zip archives')
 	parser.add_argument('zipfiles', nargs='+', help='List of zip files to process')
+	add_common_args(parser)
 	args = parser.parse_args()
-	config = read_config()
+	config = get_config(args, 'nic2csv')
 	
 	process(config, *args.zipfiles)
 

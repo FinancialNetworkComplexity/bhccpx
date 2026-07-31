@@ -336,11 +336,16 @@ def make_bhcs(config: ConfigParser):
 def process(config):
     make_bhcs(config)
 
-def main(argv=None):
-    from bhc_datautil import read_config, parse_command_line
-    config = read_config()
-    config = parse_command_line(argv, config, __file__)
-    process(config)
+def main():
+	import argparse
+	from bhc_datautil import add_common_args, get_config
+
+	parser = argparse.ArgumentParser(description='Extract and process BHCs from NIC data')
+	add_common_args(parser)
+	args = parser.parse_args()
+	config = get_config(args, 'sys2bhc')
+	
+	process(config)
     
 if __name__ == "__main__":
     main()
