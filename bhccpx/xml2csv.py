@@ -23,6 +23,21 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+"""A utility file with helper functions to translate XML files extracted
+from NIC archives into equivalent CSV files. These functions are called
+automatically by :mod:`nic2csv`. Three NIC element types are recognized
+(ATTRIBUTES, RELATIONSHIP, and TRANSFORMATION), each with its own column
+template in the configuration file.
+
+Usage::
+
+    python xml2csv.py [<xmlfile> ...] [-c CONFIG] [-p key:value]
+
+File names may be globs, and are resolved relative to ``datadir`` unless
+absolute. With no files named, the defaults in the ``[xml2csv]`` section of
+``BHCCPX.ini`` are used.
+"""
+
 import sys
 import os
 import glob

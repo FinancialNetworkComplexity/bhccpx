@@ -23,6 +23,17 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+"""This module contains several utilities used by all stages of the pipeline:
+
+    * As-of dates: The ``AsOfDate`` helper class unifies string and integer
+      representations of both specific dates and quarter-end dates.
+    * NIC data utilities: There specific CSV file-reading functions, utilities
+      to derive and join attribute DataFrames, and helper functions to read
+      and manage the cache.
+    * Configuration: helper functions to read and update the configuration files
+      and logging infrastructure.
+"""
+
 import getopt
 import sys
 import os

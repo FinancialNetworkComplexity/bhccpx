@@ -23,6 +23,13 @@
 # Last revision: 16-Oct-2025
 # -----------------------------------------------------------------------------
 
+"""This module implements the analytical core of the toolkit. Operating on
+BHCs as annotated NetworkX directed graphs, as produced by :mod:`sys2bhc`, it
+calculates the complexity measures described in the NBER paper. These measures
+are built around partitioning (taking quotient graphs from) the BHC nodes
+along an attribute dimension.
+"""
+
 from typing import Any
 from enum import Enum
 import itertools
