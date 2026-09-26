@@ -23,6 +23,20 @@
 # Last revision: 16-Jul-2019
 # -----------------------------------------------------------------------------
 
+"""For a given as-of date, the NIC relationships CSV is filtered into
+the ownership links in effect on that date, and assembled into a NetworkX directed
+graph whose nodes are NIC entities and whose edges point in the direction
+of ownership. As processing is expensive, this module leverages multiprocessing
+on multiple cores, and the results are cached for use in further modules.
+
+Usage::
+
+    python csv2sys.py [-c CONFIG] [-p key:value]
+
+The date range, cache handling, and core count are read from the ``[csv2sys]``
+section of ``BHCCPX.ini``.
+"""
+
 import os
 from configparser import ConfigParser
 import multiprocessing as mp

@@ -23,6 +23,22 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+"""The final stage of the toolkit pipeline; this module takes the BHC graphs
+assembled by :mod:`sys2bhc` and applies the specified complexity measures
+defined in :mod:`bhca` to each one, emitting the results as analysis-ready files.
+Two output forms are supported: a panel CSV of every metric for all high-holders
+across a date range, and a narrower function that returns a Pandas DataFrame.
+The latter function is used to produce the Wachovia/Wells Fargo case study
+that appears as Table 2 in the NBER paper.
+
+Usage::
+
+    python bhc2out.py [-c CONFIG] [-p key:value]
+
+The date range, BHC list, output paths, metric list, diagram colors, and
+output switches are read from the ``[bhc2out]`` section of ``BHCCPX.ini``.
+"""
+
 import os
 import ast
 from configparser import ConfigParser

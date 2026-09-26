@@ -1,3 +1,19 @@
+"""Unpacks raw NIC download archives and converts their contents to CSV.
+
+FFIEC publishes NIC snapshots as ZIP archives holding either CSV or XML
+data files. This module extracts the members of those archives into the
+``datadir`` folder specified in the configuration file. XML files are
+handed to :mod:`xml2csv` for conversion to CSV, and non-data members
+in the archive are skipped
+
+Usage::
+
+    python nic2csv.py <zipfile> [<zipfile> ...] [-c CONFIG] [-p key:value]
+
+Archive names may be globs, and are resolved relative to ``datadir`` unless
+absolute. Settings are read from the ``[nic2csv]`` section of ``BHCCPX.ini``.
+"""
+
 import os
 import glob
 from configparser import ConfigParser

@@ -23,6 +23,24 @@
 # Last revision: 22-Jun-2019
 # -----------------------------------------------------------------------------
 
+"""
+
+Given a high-holder RSSD and an as-of date, a BHC is the subgraph induced by
+that high-holder and its decendants in the banking stystem graph built by
+:mod:`csv2sys`. Each extracted subgraph includes the NIC attributes that the
+complexity measures partition on, as well as others specified in the configuration.
+Branch nodes and their decendants can optionally be pruned. This module optionally
+uses multiprocessing across several cores, and caches the resulting BHC graphs.
+
+Usage::
+
+    python sys2bhc.py [-c CONFIG] [-p key:value]
+
+The as-of dates, the list of BHCs (``None`` for all high holders), branch
+handling, cache handling, and core count are read from the ``[sys2bhc]``
+section of ``BHCCPX.ini``.
+"""
+
 import os
 import sys
 import ast
