@@ -86,43 +86,76 @@ class Metrics(StrEnum):
     GNlbl = 'Geo_Nlabl'
 
 
-def make_wachwells_comparison(BHCconfigs: list[tuple[int, AsOfDate]], config: ConfigParser) -> pd.DataFrame:
+def parse_metrics_list(config: ConfigParser) -> list[Metrics]:
     """
-    A dedicated function that produces the summary comparison of complexity
-    measures for the Wachovia-Wells Fargo case study. This appears as Table 2
-    in the NBER version of the paper.
+    Resolves the metrics_list configuration parameter into Metrics members.
 
-    :param BHCconfigs: A list of (rssd, asofdate) tuples to be processed
-    :type BHCconfigs: list[tuple[int, int]]
+    The configured entries are attribute expressions (for example,
+    Metrics.BVct), which ast.literal_eval cannot parse, so the metric names
+    are resolved explicitly here.
+
     :param config: Configuration object containing settings for the BHC Complexity Toolkit
     :type config: ConfigParser
-    :param logger: Logger object for logging messages, by default logging
-    :type logger: Logger, optional
-    :return: A DataFrame containing the complexity metrics for Wachovia and Wells Fargo
-             at specified as-of dates.
+    :return: The complexity metrics to assemble, in the order configured
+    :rtype: list[Metrics]
+    """
+    metrics_expr = ast.parse(config.get('bhc2out', 'metrics_list'), mode='eval').body
+    if not isinstance(metrics_expr, ast.List):
+        raise ValueError('The metrics_list parameter must be a list')
+    metrics_list = []
+    for entry in metrics_expr.elts:
+        if not (isinstance(entry, ast.Attribute) and isinstance(entry.value, ast.Name)
+                and entry.value.id == 'Metrics'):
+            raise ValueError(f'Invalid metrics_list entry: {ast.unparse(entry)}. Expected format is Metrics.NAME')
+        if Metrics[entry.attr] not in metrics_list:
+            metrics_list.append(Metrics[entry.attr])
+    return metrics_list
+
+
+def make_bespoke(config: ConfigParser, bhc_asof_list: list[tuple[int, int]] | None = None) -> pd.DataFrame:
+    """
+    Produces a bespoke summary of complexity measures, with one row for each
+    of a given list of BHC-date pairs.
+
+    The metrics to assemble are given by the metrics_list configuration
+    parameter. The results are written as a CSV file, named by the
+    bespoke_filename parameter, in the configured outdir.
+
+    :param config: Configuration object containing settings for the BHC Complexity Toolkit
+    :type config: ConfigParser
+    :param bhc_asof_list: A list of (rssd, asofdate) pairs of ints, defaulting to the
+             bhc_asof_list configuration parameter. The configured default reproduces
+             the Wachovia-Wells Fargo comparison, which appears as Table 2 in the
+             NBER version of the paper.
+    :type bhc_asof_list: list[tuple[int, int]], optional
+    :return: A DataFrame containing the complexity metrics, one row per BHC-date pair
     :rtype: pd.DataFrame
     """
+    if bhc_asof_list is None:
+        bhc_asof_list = ast.literal_eval(config.get('bhc2out', 'bhc_asof_list')): list[tuple[int, int]]
+    BHCconfigs = [(int(rssd), AsOfDate.from_int(int(asof))) for rssd, asof in bhc_asof_list]
+    metrics_list = parse_metrics_list(config)
     # Loop to extract all of BHC snapshots defined by BHCconfigs
     metrics = {}
     BHCdict = {}
     logger.info('Creating BHC networks')
     for rssd, asof in tqdm(BHCconfigs, desc="BHC-Quarter pairs"):
         BHC = extractBHC(config, asof, rssd)
-        metrics = complexity_workup(BHC)
+        metrics = complexity_workup(BHC, metrics_list)
         BHCdict[str(rssd)+'_'+str(asof)] = [rssd, str(asof)] + list(metrics.values())
     cols = ['rssd', 'asofdate'] + list(metrics.keys())
-    table2 = pd.DataFrame.from_dict(BHCdict, orient='index')
-    table2.columns = cols
-    table2['rssd'] = table2['rssd'].astype(int)
-    table2.sort_values(['rssd','asofdate'], ascending=[True,True], inplace=True)
-    logger.debug(table2.iloc[:,2:6])
-    logger.debug(table2.iloc[:,6:14])
-    logger.debug(table2.iloc[:,14:22])
-    logger.info('*** Processing Table2 Complete ***')
-    return table2
+    bespoke = pd.DataFrame.from_dict(BHCdict, orient='index')
+    bespoke.columns = cols
+    bespoke['rssd'] = bespoke['rssd'].astype(int)
+    bespoke.sort_values(['rssd','asofdate'], ascending=[True,True], inplace=True)
+    bespokefilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'bespoke_filename'))
+    bespoke.to_csv(bespokefilepath, index=False)
+    logger.debug('\n%s', bespoke.to_string())
+    logger.info('*** Processing bespoke output complete ***')
+    return bespoke
 
 
-def complexity_workup(BHC) -> dict[str, int]:
+def complexity_workup(BHC, metrics_list: list[Metrics] | None = None) -> dict[str, int]:
     """Calculates a standard set of complexity metrics for a BHC
     
     Most of the metrics involve quotienting the nodes of the BHC graph.
@@ -162,52 +195,68 @@ def complexity_workup(BHC) -> dict[str, int]:
 
     :param BHC: A directed graph representing a bank holding company
     :type BHC: networkx.DiGraph
+    :param metrics_list: The subset of the metrics above to calculate,
+             defaulting to all of them
+    :type metrics_list: list[Metrics], optional
     :param logger: Logger object for logging messages, by default logging
     :type logger: Logger, optional
     :return: Components in the projection of BHC to a simple undirected graph
     :rtype: dict[str, int]
     """
 
+    wanted = set(Metrics if metrics_list is None else metrics_list)
     metrics = dict()
     # Basic metrics, using the key constants defined above
-    metrics[Metrics.BVct] = BHC.number_of_nodes()
-    metrics[Metrics.BEct] = edge_count(BHC)
-    metrics[Metrics.BCrk] = cycle_rank(BHC)
-    metrics[Metrics.BCmp] = number_of_components(BHC)
+    if Metrics.BVct in wanted:
+        metrics[Metrics.BVct] = BHC.number_of_nodes()
+    if Metrics.BEct in wanted:
+        metrics[Metrics.BEct] = edge_count(BHC)
+    if Metrics.BCrk in wanted:
+        metrics[Metrics.BCrk] = cycle_rank(BHC)
+    if Metrics.BCmp in wanted:
+        metrics[Metrics.BCmp] = number_of_components(BHC)
 
     # Quotiented by entity type
     DIMEN = 'entity_type'
-    QEF = get_quotient(BHC, DIMEN, QType.FULL)
-    QEH = get_quotient(BHC, DIMEN, QType.HETERO)
-    QEFC = get_quotient(BHC, DIMEN, QType.FULL_COND)
-    QEHC = get_quotient(BHC, DIMEN, QType.HETERO_COND)
-    CE = get_contraction(BHC, DIMEN).to_undirected()
-    DMHE = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[Metrics.EQfxB] = cycle_rank(QEF)
-    metrics[Metrics.EQhxB] = cycle_rank(QEH)
-    metrics[Metrics.EQfcB] = cycle_rank(QEFC)
-    metrics[Metrics.EQhcB] = cycle_rank(QEHC)
-    metrics[Metrics.EQecB] = cycle_rank(CE)
-    metrics[Metrics.EDHmB] = cycle_rank(DMHE)
-    metrics[Metrics.EDHmM] = number_of_components(DMHE)
-    metrics[Metrics.ENlbl] = len(get_labels(BHC, DIMEN))
+    if Metrics.EQfxB in wanted:
+        metrics[Metrics.EQfxB] = cycle_rank(get_quotient(BHC, DIMEN, QType.FULL))
+    if Metrics.EQhxB in wanted:
+        metrics[Metrics.EQhxB] = cycle_rank(get_quotient(BHC, DIMEN, QType.HETERO))
+    if Metrics.EQfcB in wanted:
+        metrics[Metrics.EQfcB] = cycle_rank(get_quotient(BHC, DIMEN, QType.FULL_COND))
+    if Metrics.EQhcB in wanted:
+        metrics[Metrics.EQhcB] = cycle_rank(get_quotient(BHC, DIMEN, QType.HETERO_COND))
+    if Metrics.EQecB in wanted:
+        metrics[Metrics.EQecB] = cycle_rank(get_contraction(BHC, DIMEN).to_undirected())
+    if wanted & {Metrics.EDHmB, Metrics.EDHmM}:
+        DMHE = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
+        if Metrics.EDHmB in wanted:
+            metrics[Metrics.EDHmB] = cycle_rank(DMHE)
+        if Metrics.EDHmM in wanted:
+            metrics[Metrics.EDHmM] = number_of_components(DMHE)
+    if Metrics.ENlbl in wanted:
+        metrics[Metrics.ENlbl] = len(get_labels(BHC, DIMEN))
 
     # Quotiented by geographic jurisdiction
     DIMEN = 'GEO_JURISD'
-    QGF = get_quotient(BHC, DIMEN, QType.FULL)
-    QGH = get_quotient(BHC, DIMEN, QType.HETERO)
-    QGFC = get_quotient(BHC, DIMEN, QType.FULL_COND)
-    QGHC = get_quotient(BHC, DIMEN, QType.HETERO_COND)
-    CG = get_contraction(BHC, DIMEN).to_undirected()
-    DMHG = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
-    metrics[Metrics.GQfxB] = cycle_rank(QGF)
-    metrics[Metrics.GQhxB] = cycle_rank(QGH)
-    metrics[Metrics.GQfcB] = cycle_rank(QGFC)
-    metrics[Metrics.GQhcB] = cycle_rank(QGHC)
-    metrics[Metrics.GQecB] = cycle_rank(CG)
-    metrics[Metrics.GDHmB] = cycle_rank(DMHG)
-    metrics[Metrics.GDHmM] = number_of_components(DMHG)
-    metrics[Metrics.GNlbl] = len(get_labels(BHC, DIMEN))
+    if Metrics.GQfxB in wanted:
+        metrics[Metrics.GQfxB] = cycle_rank(get_quotient(BHC, DIMEN, QType.FULL))
+    if Metrics.GQhxB in wanted:
+        metrics[Metrics.GQhxB] = cycle_rank(get_quotient(BHC, DIMEN, QType.HETERO))
+    if Metrics.GQfcB in wanted:
+        metrics[Metrics.GQfcB] = cycle_rank(get_quotient(BHC, DIMEN, QType.FULL_COND))
+    if Metrics.GQhcB in wanted:
+        metrics[Metrics.GQhcB] = cycle_rank(get_quotient(BHC, DIMEN, QType.HETERO_COND))
+    if Metrics.GQecB in wanted:
+        metrics[Metrics.GQecB] = cycle_rank(get_contraction(BHC, DIMEN).to_undirected())
+    if wanted & {Metrics.GDHmB, Metrics.GDHmM}:
+        DMHG = get_disjoint_maximal_homogeneous_subgraphs(BHC, DIMEN)
+        if Metrics.GDHmB in wanted:
+            metrics[Metrics.GDHmB] = cycle_rank(DMHG)
+        if Metrics.GDHmM in wanted:
+            metrics[Metrics.GDHmM] = number_of_components(DMHG)
+    if Metrics.GNlbl in wanted:
+        metrics[Metrics.GNlbl] = len(get_labels(BHC, DIMEN))
 
     return metrics
 
@@ -315,9 +364,19 @@ def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOf
 
 def make_panel(config: ConfigParser):
     """
-    Create a full panel of complexity measures for all BHCs for all quarters
-    in the list of as-of dates between asofdate0 and asofdate1.
+    Create a full panel of complexity measures, with one row for each BHC in
+    the bhclist configuration parameter (or every high holder, if bhclist is
+    None), for every quarter in the list of as-of dates between asofdate0
+    and asofdate1.
+
+    The metrics to assemble are given by the metrics_list configuration
+    parameter. The panel is written as a CSV file, named by the
+    panel_filename parameter, in the configured outdir.
+
+    :param config: Configuration object containing settings for the BHC Complexity Toolkit
+    :type config: ConfigParser
     """
+    metrics_list = parse_metrics_list(config)
     asof_list = AsOfDate.make_range(AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate0')), AsOfDate.from_YQ_str(config.get('bhc2out', 'asofdate1')))
     if config.getint('bhc2out', 'parallel') > 0:
         logger.info('Beginning parallel processing for each asofdate (process messages may be trapped by parallel threads)')
@@ -325,7 +384,7 @@ def make_panel(config: ConfigParser):
         pcount = min(config.getint('bhc2out', 'parallel'), 1 if os_cpu_count is None else os_cpu_count, len(asof_list))
         pool = mp.Pool(pcount)
         results = {
-            asof: pool.apply_async(all_bhc_complex, (config, asof))
+            asof: pool.apply_async(all_bhc_complex, (config, asof, metrics_list))
             for asof in asof_list
         }
         results = {k: v.get() for k, v in results.items()}
@@ -336,12 +395,12 @@ def make_panel(config: ConfigParser):
         logger.info('Beginning sequential processing for each asofdate')
         results = {}
         for asofdate in tqdm(asof_list, desc="Processing per as-of date"):
-            results[asofdate] = all_bhc_complex(config, asofdate)
+            results[asofdate] = all_bhc_complex(config, asofdate, metrics_list)
         logger.debug('Sequential processing complete')
     
     panelfilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'panel_filename'))
     with open(panelfilepath, mode='w') as csvfile:
-        fields = ['ASOF', 'RSSD'] + ast.literal_eval(config.get('bhc2out', 'metric_list'))
+        fields = ['ASOF', 'RSSD'] + [metric.value for metric in metrics_list]
         csvwriter = csv.DictWriter(csvfile, fieldnames=fields)
         csvwriter.writeheader()
         # TODO: NEED TO SORT results BY ASOF AND RSSD BEFORE SAVING TO CSV
@@ -354,7 +413,7 @@ def make_panel(config: ConfigParser):
     logger.info('**** Processing complete ****')
 
 
-def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate) -> dict[int, dict[str, int]]:
+def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, metrics_list: list[Metrics] | None = None) -> dict[int, dict[str, int]]:
     DATA = makeDATA(
         indir=config.get('bhc2out', 'indir'),
         file_attA=config.get('bhc2out', 'attributesactive'),
@@ -373,7 +432,7 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate) -> dict[int, dict[
     BHCs: dict[int, dict[str, int]] = dict()
     for rssd in highholders:
         BHC = populate_bhc(config, BankSys, DATA, rssd)
-        metrics = complexity_workup(BHC)
+        metrics = complexity_workup(BHC, metrics_list)
         if config.getboolean('bhc2out', 'test_metrics'):
             context = f"ASOF={str(asofdate)}, RSSD={str(rssd)}"
             test_metrics(metrics, context)
@@ -385,19 +444,8 @@ def process(config):
     if config.getboolean('bhc2out', 'make_panel', fallback=False):
         make_panel(config)
     
-    if config.getboolean('bhc2out', 'make_wachwells_comparison', fallback=False):
-        # Default configs to run
-        # RSSD 1073551 is Wachovia Corp.
-        # RSSD 1120754 is Wells Fargo & Co.
-        BHCconfigs = [
-            (1120754, AsOfDate.from_int(20061231)),
-            (1073551, AsOfDate.from_int(20061231)),
-            (1120754, AsOfDate.from_int(20080930)), 
-            (1073551, AsOfDate.from_int(20080930)),
-            (1120754, AsOfDate.from_int(20081231)),
-            (1120754, AsOfDate.from_int(20101231))
-        ]
-        make_wachwells_comparison(BHCconfigs, config)
+    if config.getboolean('bhc2out', 'make_bespoke', fallback=False):
+        make_bespoke(config)
 
 def main():
 	import argparse
@@ -408,7 +456,7 @@ def main():
 	args = parser.parse_args()
 	config = get_config(args, 'bhc2out')
 	
-	process(config, *args.zipfiles)
+	process(config)
     
 if __name__ == "__main__":
     main()
