@@ -40,7 +40,58 @@ def extract_files_from_zip(zip_path: str, extract_to: str) -> list[str]:
 
 
 def process_files(zipfile_globs: list[str], config: ConfigParser):
-	"""Extract files from zip archives and convert XML->CSV if needed"""
+    """Extract files from zip archives and convert XML->CSV if needed.
+
+    Processes a list of glob patterns pointing to zip archives. For each matched
+    zip file, extracts its contents to the configured data directory and
+    automatically converts any XML files to CSV format using the NIC file parser.
+
+    Args:
+        zipfile_globs (list[str]): List of glob patterns or file paths pointing to
+            zip archives. Patterns can be absolute paths or relative paths (which
+            will be resolved relative to the 'datadir' from config).
+            Example: ['data/export_*.zip', '/absolute/path/archive.zip']
+
+        config (ConfigParser): Configuration object with at least a 'DEFAULT'
+            section containing 'datadir' key specifying the base directory for
+            relative path resolution and file extraction.
+            Expected structure:
+                [DEFAULT]
+                datadir = /path/to/data
+
+    Returns:
+        None
+
+    Raises:
+        No exceptions raised directly; logs warnings for unmatched glob patterns.
+
+    Notes:
+        - Unmatched glob patterns generate a warning log but don't halt execution.
+        - Only .xml files (case-insensitive) are automatically processed for
+          conversion.
+        - Requires external functions: extract_files_from_zip() and
+          parse_nic_file() to be defined.
+
+    Example:
+        >>> from configparser import ConfigParser
+        >>>
+        >>> # Set up configuration
+        >>> config = ConfigParser()
+        >>> config['DEFAULT'] = {'datadir': '/home/user/data'}
+        >>>
+        >>> # Process multiple zip files matching patterns
+        >>> zipfile_patterns = [
+        ...     'exports/monthly_*.zip',
+        ...     '/archive/backup_2024.zip'
+        ... ]
+        >>> process_files(zipfile_patterns, config)
+
+        # This will:
+        # 1. Find all zip files matching 'exports/monthly_*.zip' relative to /home/user/data
+        # 2. Find /archive/backup_2024.zip (absolute path)
+        # 3. Extract contents to /home/user/data
+        # 4. Automatically convert any .xml files to .csv format
+    """
 	for zipfile_glob in zipfile_globs:
 		if os.path.isabs(zipfile_glob):
 			zipfile_glob_qualified = zipfile_glob
