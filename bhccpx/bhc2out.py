@@ -14,7 +14,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with the BHC Complexity Toolkit.  If not, 
+# along with the BHC Complexity Toolkit.  If not,
 # see <https://www.gnu.org/licenses/>.
 # -----------------------------------------------------------------------------
 # Copyright 2019, Mark D. Flood
@@ -55,8 +55,8 @@ from bhc_datautil import AsOfDate, makeDATA
 from csv2sys import make_banksys
 from sys2bhc import populate_bhc, extractBHC
 from bhca import (
-	QType, get_labels, edge_count, cycle_rank, number_of_components,
-	get_quotient, get_contraction, get_disjoint_maximal_homogeneous_subgraphs
+    QType, get_labels, edge_count, cycle_rank, number_of_components,
+    get_quotient, get_contraction, get_disjoint_maximal_homogeneous_subgraphs
 )
 
 logger = logging.getLogger("bhc2out")
@@ -132,7 +132,7 @@ def make_bespoke(config: ConfigParser, bhc_asof_list: list[tuple[int, int]] | No
     :rtype: pd.DataFrame
     """
     if bhc_asof_list is None:
-        bhc_asof_list = ast.literal_eval(config.get('bhc2out', 'bhc_asof_list')): list[tuple[int, int]]
+        bhc_asof_list: list[tuple[int, int]] = ast.literal_eval(config.get('bhc2out', 'bhc_asof_list'))
     BHCconfigs = [(int(rssd), AsOfDate.from_int(int(asof))) for rssd, asof in bhc_asof_list]
     metrics_list = parse_metrics_list(config)
     # Loop to extract all of BHC snapshots defined by BHCconfigs
@@ -157,22 +157,22 @@ def make_bespoke(config: ConfigParser, bhc_asof_list: list[tuple[int, int]] | No
 
 def complexity_workup(BHC, metrics_list: list[Metrics] | None = None) -> dict[str, int]:
     """Calculates a standard set of complexity metrics for a BHC
-    
+
     Most of the metrics involve quotienting the nodes of the BHC graph.
     The nodes are quotiented by entity type and (separately) geographic
-    juridiction. 
-    
+    juridiction.
+
     The following metrics are calculated:
-        
+
     A. Basic metrics
-    
-      * Bas_Vertex_count = Number of nodes, original BHC graph 
-      * Bas_Edge_count   = Number of edges, BHC graph 
-      * Bas_Cycle_rank   = Cycle rank (b1), BHC graph 
+
+      * Bas_Vertex_count = Number of nodes, original BHC graph
+      * Bas_Edge_count   = Number of edges, BHC graph
+      * Bas_Cycle_rank   = Cycle rank (b1), BHC graph
       * Bas_Num_CComp    = Number of connected components (b0), BHC graph
-      
+
     B. Entity quotients
-    
+
       * Ent_Qfull_B1 = Cycle rank, full entity quotient
       * Ent_Qhetr_B1 = Cycle rank, heterogeneous entity quotient
       * Ent_Qfcon_B1 = Cycle rank, condensed entity quotient
@@ -181,9 +181,9 @@ def complexity_workup(BHC, metrics_list: list[Metrics] | None = None) -> dict[st
       * Ent_DjHom_B1 = 'Ent_DjHom_B1'
       * Ent_DjHom_M  = 'Ent_DjHom_M'
       * Ent_Nlabl    = 'Ent_Nlabl'
-      
+
     B. Geography quotients
-    
+
       * Geo_Qfull_B1 = 'Geo_Qfull_B1'
       * Geo_Qhetr_B1 = 'Geo_Qhetr_B1'
       * Geo_Qfcon_B1 = 'Geo_Qfcon_B1'
@@ -267,7 +267,7 @@ def test_metrics(metrics: dict[str, int], context: str):
     # Ensure that the BHC is a single connected component
     if metrics[Metrics.BCmp] != 1:
         logger.warning("BHC is not completely connected. %s: %s, Context: %s", Metrics.BCmp, metrics[Metrics.BCmp], context)
-    
+
     # Confirm that Equation 3 (Euler-Poincare) holds
     if metrics[Metrics.BCrk] != metrics[Metrics.BEct] - metrics[Metrics.BVct] + metrics[Metrics.BCmp]:
         logger.warning(
@@ -283,7 +283,7 @@ def test_metrics(metrics: dict[str, int], context: str):
             Metrics.EQfxB, metrics[Metrics.EQfxB], Metrics.BCrk, metrics[Metrics.BCrk],
             Metrics.BVct, metrics[Metrics.BVct], Metrics.ENlbl, metrics[Metrics.ENlbl], context
         )
-    
+
     # Confirm that Corollary 3.4 (NBER version) holds -- entity type
     if metrics[Metrics.EQhxB] != metrics[Metrics.EDHmM] - metrics[Metrics.ENlbl] + metrics[Metrics.BCrk] - metrics[Metrics.EDHmB]:
         logger.warning(
@@ -299,7 +299,7 @@ def test_metrics(metrics: dict[str, int], context: str):
             Metrics.GQfxB, metrics[Metrics.GQfxB], Metrics.BCrk, metrics[Metrics.BCrk],
             Metrics.BVct, metrics[Metrics.BVct], Metrics.GNlbl, metrics[Metrics.GNlbl], context
         )
-        
+
     # Confirm that Corollary 3.4 (NBER version) holds -- geography
     if metrics[Metrics.GQhxB] != metrics[Metrics.GDHmM] - metrics[Metrics.GNlbl] + metrics[Metrics.BCrk] - metrics[Metrics.GDHmB]:
         logger.warning(
@@ -307,7 +307,7 @@ def test_metrics(metrics: dict[str, int], context: str):
             Metrics.GQhxB, metrics[Metrics.GQhxB], Metrics.GDHmM, metrics[Metrics.GDHmM], Metrics.GNlbl, metrics[Metrics.GNlbl],
             Metrics.BCrk, metrics[Metrics.BCrk], Metrics.GDHmB, metrics[Metrics.GDHmB], context
         )
-        
+
 def makeSVG(config:ConfigParser, BHC:nx.DiGraph, outdir, rssd_hh, asofdate: AsOfDate, partition:str='entity_type', popup=False):
     """
     Create an SVG image file representing a BHC.
@@ -397,7 +397,7 @@ def make_panel(config: ConfigParser):
         for asofdate in tqdm(asof_list, desc="Processing per as-of date"):
             results[asofdate] = all_bhc_complex(config, asofdate, metrics_list)
         logger.debug('Sequential processing complete')
-    
+
     panelfilepath = os.path.join(config.get('bhc2out', 'outdir'), config.get('bhc2out', 'panel_filename'))
     with open(panelfilepath, mode='w') as csvfile:
         fields = ['ASOF', 'RSSD'] + [metric.value for metric in metrics_list]
@@ -443,20 +443,20 @@ def all_bhc_complex(config: ConfigParser, asofdate: AsOfDate, metrics_list: list
 def process(config):
     if config.getboolean('bhc2out', 'make_panel', fallback=False):
         make_panel(config)
-    
+
     if config.getboolean('bhc2out', 'make_bespoke', fallback=False):
         make_bespoke(config)
 
 def main():
-	import argparse
-	from bhc_datautil import add_common_args, get_config
+    import argparse
+    from bhc_datautil import add_common_args, get_config
 
-	parser = argparse.ArgumentParser(description='Compute complexity metrics for BHCs and generate output tables/files')
-	add_common_args(parser)
-	args = parser.parse_args()
-	config = get_config(args, 'bhc2out')
-	
-	process(config)
-    
+    parser = argparse.ArgumentParser(description='Compute complexity metrics for BHCs and generate output tables/files')
+    add_common_args(parser)
+    args = parser.parse_args()
+    config = get_config(args, 'bhc2out')
+
+    process(config)
+
 if __name__ == "__main__":
     main()
