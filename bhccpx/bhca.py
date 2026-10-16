@@ -97,7 +97,7 @@ def get_labels(BHC: nx.DiGraph, dimen: str, missings=dict()):
 
 
 
-def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
+def get_quotient(BHC: nx.DiGraph, dimen: str, quotient_type: QType):
     """Calculate the quotient of BHC, partitioning by a given dimension
 
     In a quotient, the nodes of the original graph (BHC) are partitioned
@@ -131,8 +131,8 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
     :type BHC: networkx.DiGraph
     :param dimen: Key indicating which node attribute to scan for values
     :type dimen: str
-    :param Qtype: Indicator of the quotient type to calculate
-    :type Qtype: QType
+    :param quotient_type: Indicator of the quotient type to calculate
+    :type quotient_type: QType
     :returns: The calculated quotient graph (undirected)
     :rtype: undirected networkx.MultiGraph or networkx.Graph (if condensed)
 
@@ -165,14 +165,15 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
         2
     """
     BHCu = BHC.to_undirected()
+
     # BHCq is the (undirected) quotient graph to be derived from BHC
-    if Qtype in [QType.FULL, QType.HETERO]:
-        # Full (multi-edges and self-loops)
-        # Heterogeneous (multi-edges, no self-loops)
+    if quotient_type.value in [QType.FULL.value, QType.HETERO.value]:
+        # FULL (multi-edges and self-loops)
+        # HETERO (multi-edges, no self-loops)
         BHCq = nx.MultiGraph()
     else:
-        # Condensed (self-loops, but no multi-edges)
-        # Heterogeneous condensed (no multi-edges/self-loops)
+        # FULL_COND (condensed edges: self-loops, but no multi-edges)
+        # HETERO_COND (condensed edges: no multi-edges nor self-loops)
         BHCq = nx.Graph()
 
     # Establish the nodes of the quotient
@@ -190,7 +191,8 @@ def get_quotient(BHC: nx.DiGraph, dimen: str, Qtype: QType):
             BHCq.add_edge(parent_label, child_label, attr_dict=e_attrs)
 
     # Remove self-loops, as appropriate
-    if Qtype in [QType.HETERO, QType.HETERO_COND]:
+    # if quotient_type==QType.HETERO or quotient_type==QType.HETERO_COND:
+    if quotient_type.value in [QType.HETERO.value, QType.HETERO_COND.value]:
         removals = list(nx.selfloop_edges(BHCq))
         BHCq.remove_edges_from(removals)
 
